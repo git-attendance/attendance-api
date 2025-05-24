@@ -13,6 +13,7 @@
     "baseUrl": ".",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
     "paths": {
       "@/*": ["./*"]
     }

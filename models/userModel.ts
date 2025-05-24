@@ -2,15 +2,17 @@ import mongoose, { Document, Schema } from "mongoose";
 
 // Purpose: Define the user model schema
 export interface UserModel extends Document {
-  username: string;
+  name: string;
   email: string;
-  password: string;
-  avatar: string;
+  personId?: string;  // Luxand person ID
+  role: 'student' | 'admin';
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const UserSchema = new Schema<UserModel>(
   {
-    username: {
+    name: {
       type: String,
       required: true,
     },
@@ -19,13 +21,13 @@ const UserSchema = new Schema<UserModel>(
       required: true,
       unique: true,
     },
-    password: {
+    personId: {
       type: String,
-      required: true,
     },
-    avatar: {
+    role: {
       type: String,
-      default: null,
+      enum: ['student', 'admin'],
+      default: 'student',
     },
   },
   { timestamps: true }
