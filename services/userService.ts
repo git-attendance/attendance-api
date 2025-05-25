@@ -1,5 +1,4 @@
 import { UserRepository } from "../repositories/userRepository";
-import { AppError } from "../middleware/errorHandler";
 import { UserModel } from "../models/userModel";
 import { FilterQuery } from "mongoose";
 
@@ -14,49 +13,119 @@ export class UserService {
   async getUser(id: string): Promise<UserModel | null> {
     const user = await this.userRepository.getUser(id);
     if (!user) {
-      throw new AppError("User not found", 404);
+      const error = new Error("User not found") as any;
+      error.statusCode = 404;
+      error.code = 'USER_NOT_FOUND';
+      throw error;
     }
     return user;
   }
 
   async getUsers(): Promise<UserModel[]> {
-    return this.userRepository.getUsers();
+    try {
+      return await this.userRepository.getUsers();
+    } catch (error) {
+      const err = new Error("Failed to fetch users") as any;
+      err.statusCode = 500;
+      err.code = 'USERS_FETCH_ERROR';
+      throw err;
+    }
   }
 
   async createUser(userData: Partial<UserModel>): Promise<UserModel> {
-    // *You can add hashing here to hash the password of the user. Feel free to modify base on your needs.
-    const existingUser = await this.userRepository.searchAndUpdate({ email: userData.email });
-    if (existingUser) {
-      throw new AppError("User already exists", 400);
+    try {
+      // Validate required fields
+      if (!userData.email || !userData.password) {
+        const error = new Error("Email and password are required") as any;
+        error.statusCode = 400;
+        error.code = 'MISSING_REQUIRED_FIELDS';
+        throw error;
+      }
+
+      // Check if user already exists
+      const existingUser = await this.userRepository.searchAndUpdate({ email: userData.email });
+      if (existingUser) {
+        const error = new Error("User already exists") as any;
+        error.statusCode = 400;
+        error.code = 'USER_ALREADY_EXISTS';
+        throw error;
+      }
+
+      return await this.userRepository.createUser(userData);
+    } catch (error: any) {
+      if (error.statusCode) throw error;
+
+      const err = new Error("Failed to create user") as any;
+      err.statusCode = 500;
+      err.code = 'USER_CREATE_ERROR';
+      throw err;
     }
-    return this.userRepository.createUser(userData);
   }
 
   async updateUser(updateData: Partial<UserModel>): Promise<UserModel | null> {
-    if (!updateData._id) {
-      throw new AppError("User ID is required", 400);
-    }
+    try {
+      if (!updateData._id) {
+        const error = new Error("User ID is required") as any;
+        error.statusCode = 400;
+        error.code = 'MISSING_USER_ID';
+        throw error;
+      }
 
-    const user = await this.userRepository.updateUser(updateData._id, updateData);
-    if (!user) {
-      throw new AppError("User not found", 404);
+      const user = await this.userRepository.updateUser(updateData._id, updateData);
+      if (!user) {
+        const error = new Error("User not found") as any;
+        error.statusCode = 404;
+        error.code = 'USER_NOT_FOUND';
+        throw error;
+      }
+      return user;
+    } catch (error: any) {
+      if (error.statusCode) throw error;
+
+      const err = new Error("Failed to update user") as any;
+      err.statusCode = 500;
+      err.code = 'USER_UPDATE_ERROR';
+      throw err;
     }
-    return user;
   }
 
   async deleteUser(id: string): Promise<UserModel | null> {
-    const user = await this.userRepository.deleteUser(id);
-    if (!user) {
-      throw new AppError("User not found", 404);
+    try {
+      const user = await this.userRepository.deleteUser(id);
+      if (!user) {
+        const error = new Error("User not found") as any;
+        error.statusCode = 404;
+        error.code = 'USER_NOT_FOUND';
+        throw error;
+      }
+      return user;
+    } catch (error: any) {
+      if (error.statusCode) throw error;
+
+      const err = new Error("Failed to delete user") as any;
+      err.statusCode = 500;
+      err.code = 'USER_DELETE_ERROR';
+      throw err;
     }
-    return user;
   }
 
   async searchUser(query: FilterQuery<UserModel>): Promise<UserModel | null> {
-    const user = await this.userRepository.searchUser(query);
-    if (!user) {
-      throw new AppError("User not found", 404);
+    try {
+      const user = await this.userRepository.searchUser(query);
+      if (!user) {
+        const error = new Error("User not found") as any;
+        error.statusCode = 404;
+        error.code = 'USER_NOT_FOUND';
+        throw error;
+      }
+      return user;
+    } catch (error: any) {
+      if (error.statusCode) throw error;
+
+      const err = new Error("Failed to search user") as any;
+      err.statusCode = 500;
+      err.code = 'USER_SEARCH_ERROR';
+      throw err;
     }
-    return user;
   }
 }

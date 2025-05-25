@@ -1,6 +1,5 @@
 import axios from 'axios';
 import FormData from 'form-data';
-import { AppError } from '../middleware/errorHandler';
 
 export class FaceRecognitionService {
     private readonly baseUrl = 'https://api.luxand.cloud';
@@ -56,15 +55,24 @@ export class FaceRecognitionService {
             console.log('Luxand API enrollment response:', JSON.stringify(response.data));
 
             if (!response.data) {
-                throw new AppError('No response data from face enrollment', 400);
+                const error = new Error('No response data from face enrollment') as any;
+                error.statusCode = 400;
+                error.code = 'FACE_ENROLLMENT_NO_DATA';
+                throw error;
             }
 
             if (!response.data.uuid) {
-                throw new AppError('No person UUID returned from enrollment', 400);
+                const error = new Error('No person UUID returned from enrollment') as any;
+                error.statusCode = 400;
+                error.code = 'FACE_ENROLLMENT_NO_UUID';
+                throw error;
             }
 
             if (response.data.status !== 'success') {
-                throw new AppError('Face enrollment was not successful', 400);
+                const error = new Error('Face enrollment was not successful') as any;
+                error.statusCode = 400;
+                error.code = 'FACE_ENROLLMENT_FAILED';
+                throw error;
             }
 
             return {
@@ -80,11 +88,19 @@ export class FaceRecognitionService {
                 status: error.response?.status
             });
 
+            if (error.statusCode) throw error;
+
             if (error.response) {
-                const message = error.response.data.message || 'Face enrollment failed';
-                throw new AppError(message, error.response.status);
+                const err = new Error(error.response.data.message || 'Face enrollment failed') as any;
+                err.statusCode = error.response.status;
+                err.code = 'FACE_ENROLLMENT_API_ERROR';
+                throw err;
             }
-            throw new AppError('Face enrollment service error', 500);
+
+            const err = new Error('Face enrollment service error') as any;
+            err.statusCode = 500;
+            err.code = 'FACE_ENROLLMENT_SERVICE_ERROR';
+            throw err;
         }
     }
 
@@ -122,24 +138,39 @@ export class FaceRecognitionService {
             console.log('Luxand API response:', JSON.stringify(response.data));
 
             if (!response.data) {
-                throw new AppError('No response data from face verification', 400);
+                const error = new Error('No response data from face verification') as any;
+                error.statusCode = 400;
+                error.code = 'FACE_VERIFICATION_NO_DATA';
+                throw error;
             }
 
             if (!Array.isArray(response.data)) {
-                throw new AppError('Invalid response format from face verification', 400);
+                const error = new Error('Invalid response format from face verification') as any;
+                error.statusCode = 400;
+                error.code = 'FACE_VERIFICATION_INVALID_FORMAT';
+                throw error;
             }
 
             if (response.data.length === 0) {
-                throw new AppError('No face detected in the image', 400);
+                const error = new Error('No face detected in the image') as any;
+                error.statusCode = 400;
+                error.code = 'FACE_VERIFICATION_NO_FACE';
+                throw error;
             }
 
             const match = response.data[0];
             if (!match.name) {
-                throw new AppError('No person name in verification response', 400);
+                const error = new Error('No person name in verification response') as any;
+                error.statusCode = 400;
+                error.code = 'FACE_VERIFICATION_NO_NAME';
+                throw error;
             }
 
             if (match.probability < 0.8) {
-                throw new AppError(`Face verification confidence too low: ${match.probability}`, 400);
+                const error = new Error(`Face verification confidence too low: ${match.probability}`) as any;
+                error.statusCode = 400;
+                error.code = 'FACE_VERIFICATION_LOW_CONFIDENCE';
+                throw error;
             }
 
             return [{
@@ -154,11 +185,19 @@ export class FaceRecognitionService {
                 status: error.response?.status
             });
 
+            if (error.statusCode) throw error;
+
             if (error.response) {
-                const message = error.response.data.message || 'Face verification failed';
-                throw new AppError(message, error.response.status);
+                const err = new Error(error.response.data.message || 'Face verification failed') as any;
+                err.statusCode = error.response.status;
+                err.code = 'FACE_VERIFICATION_API_ERROR';
+                throw err;
             }
-            throw new AppError('Face verification service error', 500);
+
+            const err = new Error('Face verification service error') as any;
+            err.statusCode = 500;
+            err.code = 'FACE_VERIFICATION_SERVICE_ERROR';
+            throw err;
         }
     }
 
@@ -186,9 +225,16 @@ export class FaceRecognitionService {
             return response.data;
         } catch (error: any) {
             if (error.response) {
-                throw new AppError(error.response.data.message || 'Failed to retrieve person details', error.response.status);
+                const err = new Error(error.response.data.message || 'Failed to retrieve person details') as any;
+                err.statusCode = error.response.status;
+                err.code = 'PERSON_DETAILS_API_ERROR';
+                throw err;
             }
-            throw new AppError('Person retrieval service error', 500);
+
+            const err = new Error('Person retrieval service error') as any;
+            err.statusCode = 500;
+            err.code = 'PERSON_DETAILS_SERVICE_ERROR';
+            throw err;
         }
     }
 } 

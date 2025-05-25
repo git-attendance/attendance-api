@@ -1,7 +1,8 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export interface AttendanceModel extends Document {
-    userId: Schema.Types.ObjectId;
+    userId: mongoose.Types.ObjectId;
+    subjectId: mongoose.Types.ObjectId;  // Reference to the subject
     personId: string;  // Luxand person ID
     checkInTime: Date;
     checkOutTime?: Date;
@@ -11,10 +12,15 @@ export interface AttendanceModel extends Document {
     updatedAt: Date;
 }
 
-const attendanceSchema = new Schema({
+const attendanceSchema = new Schema<AttendanceModel>({
     userId: {
         type: Schema.Types.ObjectId,
         ref: 'User',
+        required: true
+    },
+    subjectId: {
+        type: Schema.Types.ObjectId,
+        ref: 'Subject',
         required: true
     },
     personId: {
@@ -31,7 +37,7 @@ const attendanceSchema = new Schema({
     status: {
         type: String,
         enum: ['checked-in', 'checked-out'],
-        default: 'checked-in'
+        required: true
     },
     confidence: {
         type: Number,
@@ -40,5 +46,8 @@ const attendanceSchema = new Schema({
 }, {
     timestamps: true
 });
+
+// Create a compound index for userId and subjectId
+attendanceSchema.index({ userId: 1, subjectId: 1 });
 
 export default mongoose.model<AttendanceModel>('Attendance', attendanceSchema); 
