@@ -30,6 +30,25 @@ export class UserController {
    * /user/register:
    *   post:
    *     summary: Register a new user
+   *     tags: [Auth]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               name:
+   *                 type: string
+   *               email:
+   *                 type: string
+   *               password:
+   *                 type: string
+   *               role:
+   *                 type: string
+   *     responses:
+   *       201:
+   *         description: User registered successfully
    */
   @route.post("/register")
   async register(req: Request, res: Response): Promise<Response> {
@@ -71,6 +90,20 @@ export class UserController {
    * /user/login:
    *   post:
    *     summary: Login user
+   *     tags: [Auth]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               email:
+   *                 type: string
+   *               password:
+   *                 type: string
+   *               role:
+   *                 type: string
    *     responses:
    *       200:
    *         description: Login successful
@@ -128,6 +161,7 @@ export class UserController {
    * /user/logout:
    *   post:
    *     summary: Logout user
+   *     tags: [Auth]
    */
   @route.post("/logout")
   async logout(_req: Request, res: Response): Promise<Response> {
@@ -144,9 +178,10 @@ export class UserController {
 
   /**
    * @swagger
-   * /user/get/{id}:
+   * /user/{id}:
    *   get:
    *     summary: Get a user by ID
+   *     tags: [User]
    *     parameters:
    *       - in: path
    *         name: id
@@ -160,7 +195,7 @@ export class UserController {
    *       404:
    *         description: User not found
    */
-  @route.get("/get/:id")
+  @route.get("/:id")
   async getUser(req: Request, res: Response): Promise<Response> {
     try {
       const user = await this.userService.getUser(req.params.id);
@@ -182,11 +217,12 @@ export class UserController {
 
   /**
    * @swagger
-   * /user/get/all:
+   * /user:
    *   get:
    *     summary: Get all users (Admin only)
+   *     tags: [User]
    */
-  @route.get("/get/all")
+  @route.get("/")
   @UseMiddleware(new AuthMiddleware().authorize("admin", "teacher"))
   async getUsers(_req: Request, res: Response): Promise<Response> {
     try {
@@ -209,29 +245,30 @@ export class UserController {
 
   /**
    * @swagger
-   * /user/create:
+   * /user:
    *   post:
    *     summary: Create a new user
+   *     tags: [User]
    *     requestBody:
-   *      required: true
-   *      content:
-   *        application/json:
-   *          schema:
-   *            type: object
-   *            properties:
-   *              username:
-   *                type: string
-   *              email:
-   *                type: string
-   *              password:
-   *                type: string
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               username:
+   *                 type: string
+   *               email:
+   *                 type: string
+   *               password:
+   *                 type: string
    *     responses:
    *       201:
    *         description: User created successfully
    *       400:
    *         description: Invalid request data
    */
-  @route.post("/create")
+  @route.post("/")
   create = async (req: Request, res: Response, next: NextFunction): Promise<Response> => {
     try {
       const user = await this.userService.createUser(req.body);
@@ -254,11 +291,28 @@ export class UserController {
 
   /**
    * @swagger
-   * /user/update:
+   * /user:
    *   put:
    *     summary: Update user
+   *     tags: [User]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               username:
+   *                 type: string
+   *               email:
+   *                 type: string
+   *               password:
+   *                 type: string
+   *     responses:
+   *       200:
+   *         description: User updated successfully
    */
-  @route.put("/update")
+  @route.put("/")
   async update(req: Request, res: Response): Promise<Response> {
     try {
       // Only allow users to update their own profile unless admin
@@ -293,11 +347,12 @@ export class UserController {
 
   /**
    * @swagger
-   * /user/delete/{id}:
+   * /user/{id}:
    *   delete:
    *     summary: Delete user (Admin only)
+   *     tags: [User]
    */
-  @route.delete("/delete/:id")
+  @route.delete("/:id")
   @UseMiddleware(new AuthMiddleware().authorize("admin"))
   async delete(req: Request, res: Response): Promise<Response> {
     try {
@@ -323,6 +378,7 @@ export class UserController {
    * /user/search:
    *   post:
    *     summary: Search for a user
+   *     tags: [User]
    *     requestBody:
    *       required: true
    *       content:
@@ -364,6 +420,20 @@ export class UserController {
    * /user/upload-image/{id}:
    *   post:
    *     summary: Upload user profile image
+   *     tags: [User]
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         multipart/form-data:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               image:
+   *                 type: string
+   *                 format: binary
+   *     responses:
+   *       200:
+   *         description: Profile image uploaded successfully
    */
   @route.post("/upload-image/:id")
   @UseMiddleware(upload.single("image"))

@@ -1,7 +1,7 @@
 import { Application } from "express";
 import swaggerJSDoc from "swagger-jsdoc";
-import swaggerUi from "swagger-ui-express";
 import { SwaggerTheme, SwaggerThemeNameEnum } from "swagger-themes";
+import swaggerUi from "swagger-ui-express";
 
 const options = {
   definition: {

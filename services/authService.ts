@@ -65,7 +65,11 @@ export class AuthService {
   /**
    * Login user
    */
-  async login(email: string, password: string, role?: string): Promise<{ user: Partial<UserModel>; token: string }> {
+  async login(
+    email: string,
+    password: string,
+    role: string
+  ): Promise<{ user: Partial<UserModel>; token: string }> {
     // Find user
     const user = await this.userService.searchUser({ email });
     if (!user) {
@@ -84,8 +88,8 @@ export class AuthService {
       throw error;
     }
 
-    // Verify role if provided
-    if (role && user.role !== role) {
+    // Verify role
+    if (user.role !== role) {
       const error = new Error(`Access denied. User is not a ${role}`) as any;
       error.statusCode = 403;
       error.code = "INVALID_ROLE";
@@ -118,7 +122,7 @@ export class AuthService {
   verifyToken(token: string): any {
     try {
       // Remove Bearer prefix if present
-      const tokenString = token.startsWith('Bearer ') ? token.slice(7) : token;
+      const tokenString = token.startsWith("Bearer ") ? token.slice(7) : token;
       return jwt.verify(tokenString, this.JWT_SECRET);
     } catch (error) {
       const err = new Error("Invalid token") as any;

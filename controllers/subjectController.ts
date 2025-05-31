@@ -59,6 +59,7 @@ export class SubjectController {
    *         description: Subject created successfully
    *       400:
    *         description: Invalid request data
+   *     tags: [Subject]
    */
   @route.post("/")
   @UseMiddleware(new AuthMiddleware().authorize("teacher", "admin"))
@@ -104,6 +105,7 @@ export class SubjectController {
    *         description: Subject found successfully
    *       404:
    *         description: Subject not found
+   *     tags: [Subject]
    */
   @route.get("/:id")
   async getSubject(req: Request, res: Response): Promise<Response> {
@@ -139,6 +141,7 @@ export class SubjectController {
    *     responses:
    *       200:
    *         description: List of subjects for the user
+   *     tags: [Subject]
    */
   @route.get("/user/:userId")
   async getSubjectsByUser(req: Request, res: Response, next: NextFunction): Promise<Response> {
@@ -205,6 +208,7 @@ export class SubjectController {
    *         description: Subject updated successfully
    *       404:
    *         description: Subject not found
+   *     tags: [Subject]
    */
   @route.put("/:id")
   async updateSubject(req: Request, res: Response): Promise<Response> {
@@ -258,6 +262,7 @@ export class SubjectController {
    *         description: Subject deleted successfully
    *       404:
    *         description: Subject not found
+   *     tags: [Subject]
    */
   @route.delete("/:id")
   @UseMiddleware(new AuthMiddleware().authorize("admin"))
@@ -290,6 +295,7 @@ export class SubjectController {
    *     responses:
    *       200:
    *         description: List of all subjects
+   *     tags: [Subject]
    */
   @route.get("/")
   async getAllSubjects(req: Request, res: Response): Promise<Response> {
@@ -327,6 +333,7 @@ export class SubjectController {
    *     responses:
    *       200:
    *         description: List of subjects for the semester
+   *     tags: [Subject]
    */
   @route.get("/semester/:semester")
   async getSubjectsBySemester(req: Request, res: Response): Promise<Response> {
