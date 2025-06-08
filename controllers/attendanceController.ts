@@ -46,6 +46,25 @@ export class AttendanceController {
    *     responses:
    *       200:
    *         description: Attendance processed successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     status:
+   *                       type: string
+   *                       enum: [checked-in, checked-out]
+   *                     attendanceStatus:
+   *                       type: string
+   *                       enum: [present, absent]
+   *                       description: Indicates if the student is marked as present or absent
+   *                 message:
+   *                   type: string
    *       400:
    *         description: Invalid request or face verification failed
    *       403:
@@ -59,7 +78,7 @@ export class AttendanceController {
   async processAttendance(req: Request, res: Response): Promise<Response> {
     try {
       // Verify user has permission to mark attendance
-      if (!["student", "teacher"].includes(req.user.role)) {
+      if (!["admin", "teacher"].includes(req.user.role)) {
         return res.status(403).json({
           success: false,
           error: {
@@ -173,8 +192,42 @@ export class AttendanceController {
    *     responses:
    *       200:
    *         description: List of attendance records
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: array
+   *                   items:
+   *                     type: object
+   *                     properties:
+   *                       userId:
+   *                         type: string
+   *                       subjectId:
+   *                         type: string
+   *                       checkInTime:
+   *                         type: string
+   *                         format: date-time
+   *                       checkOutTime:
+   *                         type: string
+   *                         format: date-time
+   *                       status:
+   *                         type: string
+   *                         enum: [checked-in, checked-out]
+   *                       attendanceStatus:
+   *                         type: string
+   *                         enum: [present, absent]
+   *                         description: Indicates if the student was present or absent
+   *                       confidence:
+   *                         type: number
+   *                         description: Face recognition confidence score
    *       400:
    *         description: Invalid request
+   *       403:
+   *         description: Unauthorized access
    *     tags: [Attendance]
    */
   @route.get("/history")
@@ -257,6 +310,30 @@ export class AttendanceController {
    *     responses:
    *       200:
    *         description: Subject attendance statistics
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     totalSessions:
+   *                       type: number
+   *                     completeSessions:
+   *                       type: number
+   *                     incompleteSessions:
+   *                       type: number
+   *                     presentCount:
+   *                       type: number
+   *                       description: Number of sessions where students were marked present
+   *                     absentCount:
+   *                       type: number
+   *                       description: Number of sessions where students were marked absent
+   *                     attendanceRecords:
+   *                       type: array
    *       404:
    *         description: Subject not found
    *     tags: [Attendance]
@@ -366,8 +443,7 @@ export class AttendanceController {
       );
 
       // Update user record with the person UUID from face recognition system
-      user.personId = enrollmentResult.id;
-      await user.save();
+      await User.findByIdAndUpdate(user._id, { personId: enrollmentResult.id });
 
       return res.status(200).json({
         success: true,
@@ -384,6 +460,285 @@ export class AttendanceController {
         error: {
           code: error.code || "ENROLLMENT_ERROR",
           message: error.message || "Failed to enroll face",
+          statusCode: error.statusCode || 500,
+        },
+      });
+    }
+  }
+
+  /**
+   * @swagger
+   * /attendance/student-status:
+   *   get:
+   *     summary: Get attendance status details for a student in a subject
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: userId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: The student ID
+   *       - in: query
+   *         name: subjectId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: The subject ID
+   *       - in: query
+   *         name: startDate
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: Start date for filtering (ISO format)
+   *       - in: query
+   *         name: endDate
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: End date for filtering (ISO format)
+   *     responses:
+   *       200:
+   *         description: Student attendance status details
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     totalDays:
+   *                       type: number
+   *                     presentDays:
+   *                       type: number
+   *                     absentDays:
+   *                       type: number
+   *                     presentPercentage:
+   *                       type: number
+   *                     records:
+   *                       type: array
+   *       400:
+   *         description: Invalid request
+   *       403:
+   *         description: Unauthorized access
+   *     tags: [Attendance]
+   */
+  @route.get("/student-status")
+  async getStudentAttendanceStatus(req: Request, res: Response): Promise<Response> {
+    try {
+      const { userId, subjectId, startDate, endDate } = req.query;
+
+      if (!userId || !subjectId) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "MISSING_PARAMETERS",
+            message: "Both userId and subjectId are required",
+            statusCode: 400,
+          },
+        });
+      }
+
+      const status = await this.attendanceService.getStudentAttendanceStatus(
+        userId as string,
+        subjectId as string,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+
+      return res.status(200).json({
+        success: true,
+        data: status,
+      });
+    } catch (error: any) {
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || "STATUS_FETCH_ERROR",
+          message: error.message || "Failed to fetch attendance status",
+          statusCode: error.statusCode || 500,
+        },
+      });
+    }
+  }
+
+  /**
+   * @swagger
+   * /attendance/subject/{subjectId}/students-status:
+   *   get:
+   *     summary: Get attendance status for all students in a subject (Teachers and Admins only)
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: subjectId
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: The subject ID
+   *       - in: query
+   *         name: startDate
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: Start date for filtering (ISO format)
+   *       - in: query
+   *         name: endDate
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: End date for filtering (ISO format)
+   *     responses:
+   *       200:
+   *         description: Students attendance status details
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     totalStudents:
+   *                       type: number
+   *                     studentsStats:
+   *                       type: array
+   *                       items:
+   *                         type: object
+   *                         properties:
+   *                           userId:
+   *                             type: string
+   *                           totalDays:
+   *                             type: number
+   *                           presentDays:
+   *                             type: number
+   *                           absentDays:
+   *                             type: number
+   *                           presentPercentage:
+   *                             type: number
+   *                     overallStats:
+   *                       type: object
+   *                       properties:
+   *                         totalDays:
+   *                           type: number
+   *                         presentCount:
+   *                           type: number
+   *                         absentCount:
+   *                           type: number
+   *       403:
+   *         description: Unauthorized access
+   *       404:
+   *         description: Subject not found
+   *     tags: [Attendance]
+   */
+  @route.get("/subject/:subjectId/students-status")
+  @UseMiddleware(new AuthMiddleware().authorize("teacher", "admin"))
+  async getSubjectStudentsStatus(req: Request, res: Response): Promise<Response> {
+    try {
+      const { subjectId } = req.params;
+      const { startDate, endDate } = req.query;
+
+      const status = await this.attendanceService.getSubjectStudentsAttendanceStatus(
+        subjectId,
+        startDate ? new Date(startDate as string) : undefined,
+        endDate ? new Date(endDate as string) : undefined
+      );
+
+      return res.status(200).json({
+        success: true,
+        data: status,
+      });
+    } catch (error: any) {
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || "STATUS_FETCH_ERROR",
+          message: error.message || "Failed to fetch students attendance status",
+          statusCode: error.statusCode || 500,
+        },
+      });
+    }
+  }
+
+  /**
+   * @swagger
+   * /attendance/today:
+   *   get:
+   *     summary: Get all attendance records for today
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Today's attendance records and statistics
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     date:
+   *                       type: string
+   *                       format: date
+   *                       description: Today's date (YYYY-MM-DD)
+   *                     total:
+   *                       type: number
+   *                       description: Total number of attendance records
+   *                     present:
+   *                       type: number
+   *                       description: Number of present students
+   *                     absent:
+   *                       type: number
+   *                       description: Number of absent students
+   *                     records:
+   *                       type: array
+   *                       items:
+   *                         type: object
+   *                         properties:
+   *                           userId:
+   *                             type: string
+   *                           subjectId:
+   *                             type: string
+   *                           checkInTime:
+   *                             type: string
+   *                             format: date-time
+   *                           checkOutTime:
+   *                             type: string
+   *                             format: date-time
+   *                           status:
+   *                             type: string
+   *                             enum: [checked-in, checked-out]
+   *                           attendanceStatus:
+   *                             type: string
+   *                             enum: [present, absent]
+   *       500:
+   *         description: Server error
+   *     tags: [Attendance]
+   */
+  @route.get("/today")
+  async getTodayAttendance(req: Request, res: Response): Promise<Response> {
+    try {
+      const attendance = await this.attendanceService.getAllAttendance();
+
+      return res.status(200).json({
+        success: true,
+        data: attendance,
+      });
+    } catch (error: any) {
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || "FETCH_ERROR",
+          message: error.message || "Failed to fetch today's attendance",
           statusCode: error.statusCode || 500,
         },
       });
