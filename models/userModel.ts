@@ -4,8 +4,9 @@ import mongoose, { Document, Schema } from "mongoose";
 export interface UserModel extends Document {
   name: string;
   email: string;
-  personId?: string;  // Luxand person ID
-  role: 'student' | 'admin';
+  password: string;
+  personId?: string; // Luxand person ID
+  role: "student" | "admin" | "teacher";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,13 +22,17 @@ const UserSchema = new Schema<UserModel>(
       required: true,
       unique: true,
     },
+    password: {
+      type: String,
+      required: true,
+    },
     personId: {
       type: String,
     },
     role: {
       type: String,
-      enum: ['student', 'admin'],
-      default: 'student',
+      enum: ["student", "admin", "teacher"],
+      default: "student",
     },
   },
   { timestamps: true }

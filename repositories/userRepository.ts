@@ -1,5 +1,7 @@
 import { User, UserModel } from "../models/userModel";
 import { FilterQuery, UpdateQuery } from "mongoose";
+import { AppError } from '../middleware/errorHandler';
+import { Types } from 'mongoose';
 
 // Purpose: This file is responsible for handling all the database operations related to the user model.
 export class UserRepository {
@@ -51,5 +53,38 @@ export class UserRepository {
 
     // If multi is not specified or is false, it updates the first user in the database that matches the query with the update. It returns the updated user.
     return User.findOneAndUpdate(query, update, { new: true });
+  }
+
+  /**
+   * Find user by ID
+   * @param id - User ID
+   */
+  async findById(id: string | Types.ObjectId): Promise<UserModel | null> {
+    try {
+      return await User.findById(id);
+    } catch (error) {
+      throw new AppError('Failed to find user', 500);
+    }
+  }
+
+  /**
+   * Find teacher by ID
+   * Verifies that the user exists and is a teacher
+   * @param id - User ID
+   */
+  async findTeacherById(id: string | Types.ObjectId): Promise<UserModel> {
+    try {
+      const user = await User.findById(id);
+      if (!user) {
+        throw new AppError('Instructor not found', 404);
+      }
+      if (user.role !== 'teacher') {
+        throw new AppError('Instructor must be a teacher', 400);
+      }
+      return user;
+    } catch (error) {
+      if (error instanceof AppError) throw error;
+      throw new AppError('Failed to find teacher', 500);
+    }
   }
 }

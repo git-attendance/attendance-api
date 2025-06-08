@@ -1,46 +1,55 @@
-import mongoose, { Mongoose } from "mongoose";
+import mongoose from "mongoose";
 import { logger } from "../helpers/logger";
 import { config } from "./constants";
 
 /**
  * Establishes a connection to the MongoDB database using Mongoose.
- * Caches the connection to avoid multiple connections.
- * Throws an error if the MongoDB URI is not provided.
+ * Follows MongoDB best practices with Stable API versioning and proper connection handling.
  */
 const MONGODB_URI = process.env.MONGO_URI || config.DB.URI;
 
-interface MongooseConnection {
-  conn: Mongoose | null;
-  promise: Promise<Mongoose> | null;
-}
-
-const cached: MongooseConnection = {
-  conn: null,
-  promise: null,
+const mongooseOptions = {
+  serverApi: {
+    version: "1" as const,
+    strict: true,
+    deprecationErrors: true,
+  },
+  retryWrites: true,
+  w: "majority" as const,
 };
 
-if (!cached.conn || !cached.promise) {
-  cached.conn = null;
-  cached.promise = mongoose
-    .connect(MONGODB_URI)
-    .then((mongoose: Mongoose) => {
-      logger.info(config.DB.CONNECTED);
-      return mongoose;
-    })
-    .catch((error: Error) => {
-      logger.error(config.DB.ERROR, error);
-      throw error;
-    });
-}
-
 export const connectDatabase = async () => {
-  if (!cached.promise) {
-    throw new Error(config.DB.NOT_INITIALIZED);
-  }
+  try {
+    if (mongoose.connection.readyState === 1) {
+      logger.info("Already connected to database");
+      return mongoose.connection;
+    }
 
-  if (!cached.conn) {
-    await cached.promise;
-  }
+    await mongoose.connect(MONGODB_URI, mongooseOptions);
 
-  return mongoose.connection;
+    await mongoose.connection.db?.admin().ping();
+
+    logger.info(config.DB.CONNECTED);
+    logger.info("Successfully pinged MongoDB deployment. Connection verified!");
+
+    return mongoose.connection;
+  } catch (error) {
+    logger.error(config.DB.ERROR, error);
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
+    }
+    throw error;
+  }
+};
+
+export const disconnectDatabase = async () => {
+  try {
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
+      logger.info("Database connection closed successfully");
+    }
+  } catch (error) {
+    logger.error("Error closing database connection:", error);
+    throw error;
+  }
 };
