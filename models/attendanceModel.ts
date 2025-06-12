@@ -1,23 +1,23 @@
 import mongoose, { Schema, Document } from "mongoose";
 
 export interface AttendanceModel extends Document {
-  userId: mongoose.Types.ObjectId;
-  subjectId: mongoose.Types.ObjectId; // Reference to the subject
-  personId: string; // Luxand person ID
+  studentId: mongoose.Types.ObjectId;
+  subjectId: mongoose.Types.ObjectId;
+  personId: string;
   checkInTime: Date;
   checkOutTime?: Date;
   status: "checked-in" | "checked-out";
-  attendanceStatus: "present" | "absent"; // New field for tracking attendance status
-  confidence: number; // Face recognition confidence score
+  attendanceStatus: "present" | "absent";
+  confidence: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
 const attendanceSchema = new Schema<AttendanceModel>(
   {
-    userId: {
+    studentId: {
       type: Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Student",
       required: true,
     },
     subjectId: {
@@ -44,7 +44,7 @@ const attendanceSchema = new Schema<AttendanceModel>(
     attendanceStatus: {
       type: String,
       enum: ["present", "absent"],
-      default: "absent", // Default value set to absent
+      default: "absent",
       required: true,
     },
     confidence: {
@@ -57,7 +57,6 @@ const attendanceSchema = new Schema<AttendanceModel>(
   }
 );
 
-// Create a compound index for userId and subjectId
-attendanceSchema.index({ userId: 1, subjectId: 1 });
+attendanceSchema.index({ studentId: 1, subjectId: 1 });
 
 export default mongoose.model<AttendanceModel>("Attendance", attendanceSchema);

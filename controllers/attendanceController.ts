@@ -3,7 +3,7 @@ import { route } from "express-extract-routes";
 import { AuthMiddleware, Authenticated } from "../middleware/authMiddleware";
 import { upload } from "../middleware/multer";
 import { UseMiddleware } from "../middleware/useMiddleware";
-import { User } from "../models/userModel";
+import { Student } from "../models/studentModel";
 import { AttendanceService } from "../services/attendanceService";
 import { FaceRecognitionService } from "../services/faceRecognitionService";
 
@@ -111,13 +111,13 @@ export class AttendanceController {
         });
       }
 
-      const user = await User.findById(req.body.userId);
-      if (!user) {
+      const student = await Student.findById(req.body.studentId);
+      if (!student) {
         return res.status(404).json({
           success: false,
           error: {
-            code: "USER_NOT_FOUND",
-            message: "User not found",
+            code: "STUDENT_NOT_FOUND",
+            message: "Student not found",
             statusCode: 404,
           },
         });
@@ -126,7 +126,7 @@ export class AttendanceController {
       try {
         const attendance = await this.attendanceService.processAttendance(
           req.file.buffer,
-          user,
+          student,
           req.body.subjectId,
           req.file.originalname
         );
@@ -233,33 +233,21 @@ export class AttendanceController {
   @route.get("/history")
   async getAttendanceHistory(req: Request, res: Response): Promise<Response> {
     try {
-      const { userId, subjectId, startDate, endDate } = req.query;
+      const { studentId, subjectId, startDate, endDate } = req.query;
 
-      // Users can only view their own attendance unless they're admin/teacher
-      if (req.user.role === "student" && userId !== req.user.id) {
-        return res.status(403).json({
-          success: false,
-          error: {
-            code: "UNAUTHORIZED",
-            message: "Not authorized to view this attendance history",
-            statusCode: 403,
-          },
-        });
-      }
-
-      if (!userId) {
+      if (!studentId) {
         return res.status(400).json({
           success: false,
           error: {
-            code: "MISSING_USER_ID",
-            message: "User ID is required",
+            code: "MISSING_STUDENT_ID",
+            message: "Student ID is required",
             statusCode: 400,
           },
         });
       }
 
       const history = await this.attendanceService.getAttendanceHistory(
-        userId as string,
+        studentId as string,
         subjectId as string,
         startDate ? new Date(startDate as string) : undefined,
         endDate ? new Date(endDate as string) : undefined
@@ -421,8 +409,8 @@ export class AttendanceController {
         });
       }
 
-      const user = await User.findById(req.body.userId);
-      if (!user) {
+      const student = await Student.findById(req.body.studentId);
+      if (!student) {
         return res.status(404).json({
           success: false,
           error: {
@@ -433,9 +421,9 @@ export class AttendanceController {
         });
       }
 
-      // Enroll the face using the user's ID as the name
+      // Enroll the face using the students ID as the name
       const enrollmentResult = await this.faceRecognitionService.enrollPerson(
-        user._id.toString(),
+        student._id.toString(),
         req.file.buffer,
         "1",
         [],
@@ -443,13 +431,13 @@ export class AttendanceController {
       );
 
       // Update user record with the person UUID from face recognition system
-      await User.findByIdAndUpdate(user._id, { personId: enrollmentResult.id });
+      await Student.findByIdAndUpdate(student._id, { personId: enrollmentResult.id });
 
       return res.status(200).json({
         success: true,
         message: "Face enrolled successfully",
         data: {
-          userId: user._id,
+          studentId: student._id,
           personId: enrollmentResult.id,
           faces: enrollmentResult.faces,
         },
@@ -530,21 +518,21 @@ export class AttendanceController {
   @route.get("/student-status")
   async getStudentAttendanceStatus(req: Request, res: Response): Promise<Response> {
     try {
-      const { userId, subjectId, startDate, endDate } = req.query;
+      const { studentId, subjectId, startDate, endDate } = req.query;
 
-      if (!userId || !subjectId) {
+      if (!studentId || !subjectId) {
         return res.status(400).json({
           success: false,
           error: {
             code: "MISSING_PARAMETERS",
-            message: "Both userId and subjectId are required",
+            message: "Both studentId and subjectId are required",
             statusCode: 400,
           },
         });
       }
 
       const status = await this.attendanceService.getStudentAttendanceStatus(
-        userId as string,
+        studentId as string,
         subjectId as string,
         startDate ? new Date(startDate as string) : undefined,
         endDate ? new Date(endDate as string) : undefined
