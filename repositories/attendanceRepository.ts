@@ -5,10 +5,10 @@ import { Types, FilterQuery } from "mongoose";
 export class AttendanceRepository {
   /**
    * Find the latest attendance record for a user
-   * @param userId - The user's ID
+   * @param studentId - The user's ID
    */
-  async findLatestByUserId(userId: Types.ObjectId): Promise<AttendanceModel | null> {
-    return Attendance.findOne({ userId }).sort({ createdAt: -1 });
+  async findLatestByStudentId(studentId: Types.ObjectId): Promise<AttendanceModel | null> {
+    return Attendance.findOne({ studentId }).sort({ createdAt: -1 });
   }
 
   /**
@@ -38,16 +38,16 @@ export class AttendanceRepository {
 
   /**
    * Find latest attendance record by user ID and subject ID
-   * @param userId - User ID
+   * @param studentId - Student ID
    * @param subjectId - Subject ID
    */
-  async findLatestByUserAndSubject(
-    userId: Types.ObjectId,
+  async findLatestByStudentAndSubject(
+    studentId: Types.ObjectId,
     subjectId: string
   ): Promise<AttendanceModel | null> {
     try {
       return await Attendance.findOne({
-        userId,
+        studentId,
         subjectId,
       }).sort({ createdAt: -1 });
     } catch (error) {
@@ -57,19 +57,19 @@ export class AttendanceRepository {
 
   /**
    * Get attendance history
-   * @param userId - User ID
+   * @param studentId - Student ID
    * @param subjectId - Optional subject ID for filtering
    * @param startDate - Optional start date for filtering
    * @param endDate - Optional end date for filtering
    */
   async getHistory(
-    userId: string,
+    studentId: string,
     subjectId?: string,
     startDate?: Date,
     endDate?: Date
   ): Promise<AttendanceModel[]> {
     try {
-      const query: any = { userId };
+      const query: any = { studentId };
 
       if (subjectId) {
         query.subjectId = subjectId;

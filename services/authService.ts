@@ -105,7 +105,6 @@ export class AuthService {
       name: user.name,
       email: user.email,
       role: user.role,
-      personId: user.personId,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };

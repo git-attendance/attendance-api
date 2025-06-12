@@ -5,8 +5,7 @@ export interface UserModel extends Document {
   name: string;
   email: string;
   password: string;
-  personId?: string; // Luxand person ID
-  role: "student" | "admin" | "teacher";
+  role: "admin" | "teacher";
   createdAt: Date;
   updatedAt: Date;
 }
@@ -26,13 +25,10 @@ const UserSchema = new Schema<UserModel>(
       type: String,
       required: true,
     },
-    personId: {
-      type: String,
-    },
     role: {
       type: String,
-      enum: ["student", "admin", "teacher"],
-      default: "student",
+      enum: ["admin", "teacher"],
+      default: "teacher",
     },
   },
   { timestamps: true }

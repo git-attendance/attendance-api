@@ -1,6 +1,6 @@
 import { AttendanceModel } from "../models/attendanceModel";
 import { Subject } from "../models/subjectModel";
-import { User, UserModel } from "../models/userModel";
+import { Student, StudentModel } from "../models/studentModel";
 import { AttendanceRepository } from "../repositories/attendanceRepository";
 import { FaceRecognitionService } from "./faceRecognitionService";
 import mongoose from "mongoose";
@@ -17,13 +17,13 @@ export class AttendanceService {
   /**
    * Process attendance using face recognition for a specific subject
    * @param photoBuffer - Buffer of the photo to verify
-   * @param user - User attempting to check in/out
+   * @param student - Student attempting to check in/out
    * @param subjectId - ID of the subject for attendance
    * @param filename - Original filename of the uploaded photo
    */
   async processAttendance(
     photoBuffer: Buffer,
-    user: UserModel,
+    student: StudentModel,
     subjectId: string,
     filename: string
   ): Promise<AttendanceModel> {
@@ -47,25 +47,25 @@ export class AttendanceService {
       throw error;
     }
 
-    const currentTimeStr = currentTime.toTimeString().slice(0, 5); // HH:MM format
-    if (currentTimeStr < subject.schedule.startTime || currentTimeStr > subject.schedule.endTime) {
-      const error = new Error("Attendance can only be marked during class hours") as any;
-      error.statusCode = 400;
-      error.code = "OUTSIDE_CLASS_HOURS";
-      throw error;
-    }
+    // const currentTimeStr = currentTime.toTimeString().slice(0, 5); // HH:MM format
+    // if (currentTimeStr < subject.schedule.startTime || currentTimeStr > subject.schedule.endTime) {
+    //   const error = new Error("Attendance can only be marked during class hours") as any;
+    //   error.statusCode = 400;
+    //   error.code = "OUTSIDE_CLASS_HOURS";
+    //   throw error;
+    // }
 
     // Check if user has personId (enrolled face)
-    if (!user.personId) {
-      const error = new Error("User has not enrolled their face") as any;
+    if (!student.personId) {
+      const error = new Error("Student has not enrolled their face") as any;
       error.statusCode = 400;
       error.code = "FACE_NOT_ENROLLED";
       throw error;
     }
 
-    // Get latest attendance record for the user in this subject
-    const latestAttendance = await this.attendanceRepository.findLatestByUserAndSubject(
-      user._id,
+    // Get latest attendance record for the student in this subject
+    const latestAttendance = await this.attendanceRepository.findLatestByStudentAndSubject(
+      student._id,
       subjectId
     );
 
@@ -85,8 +85,8 @@ export class AttendanceService {
 
     const match = verificationResult[0];
     console.log("Face verification match:", match);
-    console.log("User personId:", user.personId);
-    console.log("User _id:", user._id.toString());
+    console.log("Student personId:", student.personId);
+    console.log("Student _id:", student._id.toString());
 
     if (match.confidence < 0.8) {
       const error = new Error("Face verification confidence too low") as any;
@@ -95,9 +95,9 @@ export class AttendanceService {
       throw error;
     }
 
-    // Check if the name matches the user's ID (which we used as the name during enrollment)
-    if (match.name !== user._id.toString()) {
-      const error = new Error("Face does not match registered user") as any;
+    // Check if the name matches the students ID (which we used as the name during enrollment)
+    if (match.name !== student._id.toString()) {
+      const error = new Error("Face does not match registered student") as any;
       error.statusCode = 400;
       error.code = "FACE_MISMATCH";
       throw error;
@@ -107,9 +107,9 @@ export class AttendanceService {
       if (!latestAttendance || latestAttendance.status === "checked-out") {
         // Create check-in record
         return await this.attendanceRepository.create({
-          userId: user._id,
+          studentId: student._id,
           subjectId: subject._id,
-          personId: user.personId,
+          personId: student.personId,
           checkInTime: new Date(),
           status: "checked-in",
           attendanceStatus: "present",
@@ -132,18 +132,18 @@ export class AttendanceService {
 
   /**
    * Get attendance history for a user in a specific subject
-   * @param userId - ID of the user
+   * @param studentId - ID of the student
    * @param subjectId - ID of the subject
    * @param startDate - Start date for filtering
    * @param endDate - End date for filtering
    */
   async getAttendanceHistory(
-    userId: string,
+    studentId: string,
     subjectId?: string,
     startDate?: Date,
     endDate?: Date
   ): Promise<AttendanceModel[]> {
-    return this.attendanceRepository.getHistory(userId, subjectId, startDate, endDate);
+    return this.attendanceRepository.getHistory(studentId, subjectId, startDate, endDate);
   }
 
   /**
@@ -182,39 +182,39 @@ export class AttendanceService {
 
   /**
    * Get student attendance status details for a subject
-   * @param userId - ID of the student
+   * @param studentId - ID of the student
    * @param subjectId - ID of the subject
    * @param startDate - Start date for filtering
    * @param endDate - End date for filtering
    */
   async getStudentAttendanceStatus(
-    userId: string,
+    studentId: string,
     subjectId: string,
     startDate?: Date,
     endDate?: Date
   ) {
     const attendanceRecords = await this.attendanceRepository.getHistory(
-      userId,
+      studentId,
       subjectId,
       startDate,
       endDate
     );
 
-    // Populate user details for each record
+    // Populate student details for each record
     const populatedRecords = await Promise.all(
       attendanceRecords.map(async (record) => {
-        const user = await User.findById(record.userId).select("-password");
+        const student = await Student.findById(record.studentId);
         return {
           ...record.toObject(),
-          userId: user
+          studentId: student
             ? {
-                _id: user._id,
-                name: user.name,
-                email: user.email,
-                role: user.role,
-                personId: user.personId,
+                _id: student._id,
+                firstName: student.firstName,
+                lastName: student.lastName,
+                email: student.email,
+                personId: student.personId,
               }
-            : record.userId,
+            : record.studentId,
         };
       })
     );
@@ -280,22 +280,22 @@ export class AttendanceService {
     const studentAttendance = new Map();
 
     // First, get all unique user IDs, filtering out any null or undefined values
-    const userIds = [
+    const studentIds = [
       ...new Set(
         attendanceRecords
-          .filter((record) => record && record.userId)
+          .filter((record) => record && record.studentId)
           .map((record) => {
             // Handle both string and object cases
-            const userId = record.userId;
-            if (typeof userId === "object" && userId !== null && "_id" in userId) {
-              return userId._id as mongoose.Types.ObjectId;
+            const studentId = record.studentId;
+            if (typeof studentId === "object" && studentId !== null && "_id" in studentId) {
+              return studentId._id as mongoose.Types.ObjectId;
             }
-            return userId as mongoose.Types.ObjectId;
+            return studentId as mongoose.Types.ObjectId;
           })
       ),
     ];
 
-    if (userIds.length === 0) {
+    if (studentIds.length === 0) {
       const error = new Error("No valid user IDs found in attendance records") as any;
       error.statusCode = 500;
       error.code = "INVALID_RECORDS";
@@ -303,40 +303,42 @@ export class AttendanceService {
     }
 
     // Fetch all users at once
-    const users = await User.find({ _id: { $in: userIds } }).select("-password");
-    const userMap = new Map(users.map((user) => [user._id.toString(), user]));
+    const students = await Student.find({ _id: { $in: studentIds } }).select("-password");
+    const studentsMap = new Map(students.map((student) => [student._id.toString(), student]));
 
     // Process attendance records with user details
     attendanceRecords.forEach((record) => {
-      if (!record || !record.userId) {
+      if (!record || !record.studentId) {
         console.warn("Invalid attendance record found:", record);
         return; // Skip this record
       }
 
       try {
-        // Handle both string and object cases for userId
-        const userId =
-          typeof record.userId === "object" && record.userId !== null && "_id" in record.userId
-            ? (record.userId._id as mongoose.Types.ObjectId).toString()
-            : (record.userId as mongoose.Types.ObjectId).toString();
+        // Handle both string and object cases for studentId
+        const studentId =
+          typeof record.studentId === "object" &&
+          record.studentId !== null &&
+          "_id" in record.studentId
+            ? (record.studentId._id as mongoose.Types.ObjectId).toString()
+            : (record.studentId as mongoose.Types.ObjectId).toString();
 
-        const user = userMap.get(userId);
+        const student = studentsMap.get(studentId);
 
-        if (!studentAttendance.has(userId)) {
-          studentAttendance.set(userId, {
-            user: user
+        if (!studentAttendance.has(studentId)) {
+          studentAttendance.set(studentId, {
+            student: student
               ? {
-                  _id: user._id,
-                  name: user.name,
-                  email: user.email,
-                  role: user.role,
-                  personId: user.personId,
+                  _id: student._id,
+                  firstName: student.firstName,
+                  lastName: student.lastName,
+                  email: student.email,
+                  personId: student.personId,
                 }
               : {
-                  _id: userId,
-                  name: "Unknown User",
+                  _id: studentId,
+                  firtName: "Unknown student",
+                  lastName: "N/A",
                   email: "N/A",
-                  role: "N/A",
                   personId: "N/A",
                 },
             totalDays: 0,
@@ -346,7 +348,7 @@ export class AttendanceService {
           });
         }
 
-        const stats = studentAttendance.get(userId);
+        const stats = studentAttendance.get(studentId);
         stats.totalDays++;
         if (record.attendanceStatus === "present") {
           stats.presentDays++;
@@ -361,8 +363,8 @@ export class AttendanceService {
     });
 
     // Convert map to array and calculate percentages
-    const studentsStats = Array.from(studentAttendance.entries()).map(([userId, stats]) => ({
-      user: stats.user,
+    const studentsStats = Array.from(studentAttendance.entries()).map(([studentId, stats]) => ({
+      student: stats.student,
       totalDays: stats.totalDays,
       presentDays: stats.presentDays,
       absentDays: stats.absentDays,
