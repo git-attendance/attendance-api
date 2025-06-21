@@ -1,6 +1,7 @@
 import { StudentRepository } from "../repositories/studentRepository";
 import { StudentModel } from "../models/studentModel";
 import { FilterQuery } from "mongoose";
+import { CSVExportHelper } from "../helpers/csvExport";
 
 // *Purpose: This service class is responsible for handling the business logic of the student entity. It interacts with the student repository to perform CRUD operations on the student entity.
 export class StudentService {
@@ -127,6 +128,26 @@ export class StudentService {
       const err = new Error("Failed to search student") as any;
       err.statusCode = 500;
       err.code = "STUDENT_SEARCH_ERROR";
+      throw err;
+    }
+  }
+
+  async exportStudentsToCSV(): Promise<{ csvData: string; filename: string }> {
+    try {
+      const students = await this.studentRepository.getStudents();
+      const csvData = CSVExportHelper.exportStudentsToCSV(students);
+      const filename = CSVExportHelper.generateCSVFilename("students");
+
+      return {
+        csvData,
+        filename,
+      };
+    } catch (error: any) {
+      if (error.statusCode) throw error;
+
+      const err = new Error("Failed to export students to CSV") as any;
+      err.statusCode = 500;
+      err.code = "STUDENT_CSV_EXPORT_ERROR";
       throw err;
     }
   }
