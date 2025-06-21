@@ -6,6 +6,7 @@ import { UseMiddleware } from "../middleware/useMiddleware";
 import { Student } from "../models/studentModel";
 import { AttendanceService } from "../services/attendanceService";
 import { FaceRecognitionService } from "../services/faceRecognitionService";
+import { SMSService } from "../services/smsService";
 
 // Purpose: This controller class is responsible for handling attendance-related requests.
 @route("/attendance")
@@ -13,17 +14,20 @@ import { FaceRecognitionService } from "../services/faceRecognitionService";
 export class AttendanceController {
   private attendanceService: AttendanceService;
   private faceRecognitionService: FaceRecognitionService;
+  private smsService: SMSService;
 
   constructor() {
     this.attendanceService = new AttendanceService();
     this.faceRecognitionService = new FaceRecognitionService();
+    this.smsService = new SMSService();
   }
 
   /**
    * @swagger
    * /attendance/process:
    *   post:
-   *     summary: Process attendance (check-in/check-out) for a specific subject
+   *     summary: Process attendance (check-in/check-out) automatically using face recognition
+   *     description: Automatically identifies the student using face recognition and processes attendance. No need to provide student ID.
    *     security:
    *       - bearerAuth: []
    *     requestBody:
@@ -33,19 +37,18 @@ export class AttendanceController {
    *             type: object
    *             required:
    *               - photo
-   *               - userId
    *               - subjectId
    *             properties:
    *               photo:
    *                 type: string
    *                 format: binary
-   *               userId:
-   *                 type: string
+   *                 description: Student's photo for face recognition
    *               subjectId:
    *                 type: string
+   *                 description: ID of the subject for attendance
    *     responses:
    *       200:
-   *         description: Attendance processed successfully
+   *         description: Attendance processed successfully with populated student and subject data
    *         content:
    *           application/json:
    *             schema:
@@ -63,14 +66,20 @@ export class AttendanceController {
    *                       type: string
    *                       enum: [present, absent]
    *                       description: Indicates if the student is marked as present or absent
+   *                     studentId:
+   *                       type: object
+   *                       description: Populated student information
+   *                     subjectId:
+   *                       type: object
+   *                       description: Populated subject information
    *                 message:
    *                   type: string
    *       400:
-   *         description: Invalid request or face verification failed
+   *         description: Invalid request, face not recognized, or low confidence
    *       403:
-   *         description: User not enrolled in subject
+   *         description: Unauthorized access
    *       404:
-   *         description: User or subject not found
+   *         description: Student or subject not found
    *     tags: [Attendance]
    */
   @route.post("/process")
@@ -111,22 +120,9 @@ export class AttendanceController {
         });
       }
 
-      const student = await Student.findById(req.body.studentId);
-      if (!student) {
-        return res.status(404).json({
-          success: false,
-          error: {
-            code: "STUDENT_NOT_FOUND",
-            message: "Student not found",
-            statusCode: 404,
-          },
-        });
-      }
-
       try {
         const attendance = await this.attendanceService.processAttendance(
           req.file.buffer,
-          student,
           req.body.subjectId,
           req.file.originalname
         );
@@ -371,7 +367,7 @@ export class AttendanceController {
    *               photo:
    *                 type: string
    *                 format: binary
-   *               userId:
+   *               studentId:
    *                 type: string
    *     responses:
    *       200:
@@ -387,7 +383,7 @@ export class AttendanceController {
   async enrollUserFace(req: Request, res: Response): Promise<Response> {
     try {
       // Only allow users to enroll their own face unless admin
-      if (req.user.role !== "admin" && req.user.id !== req.body.userId) {
+      if (req.user.role !== "admin" && req.user.id !== req.body.studentId) {
         return res.status(403).json({
           success: false,
           error: {
@@ -727,6 +723,255 @@ export class AttendanceController {
         error: {
           code: error.code || "FETCH_ERROR",
           message: error.message || "Failed to fetch today's attendance",
+          statusCode: error.statusCode || 500,
+        },
+      });
+    }
+  }
+
+  /**
+   * @swagger
+   * /attendance/test-sms:
+   *   post:
+   *     summary: Send a test SMS to verify Twilio configuration
+   *     description: Send a test SMS message to verify that Twilio is properly configured
+   *     security:
+   *       - bearerAuth: []
+   *     requestBody:
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             required:
+   *               - phoneNumber
+   *             properties:
+   *               phoneNumber:
+   *                 type: string
+   *                 description: Phone number to send test SMS to
+   *                 example: "+639123456789"
+   *     responses:
+   *       200:
+   *         description: Test SMS sent successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 message:
+   *                   type: string
+   *       400:
+   *         description: Invalid phone number or missing parameters
+   *       403:
+   *         description: Unauthorized access
+   *       500:
+   *         description: Failed to send SMS
+   *     tags: [Attendance]
+   */
+  @route.post("/test-sms")
+  @UseMiddleware(new AuthMiddleware().authorize("admin"))
+  async testSMS(req: Request, res: Response): Promise<Response> {
+    try {
+      const { phoneNumber } = req.body;
+
+      if (!phoneNumber) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "MISSING_PHONE_NUMBER",
+            message: "Phone number is required",
+            statusCode: 400,
+          },
+        });
+      }
+
+      // Check if SMS service is configured
+      if (!this.smsService.isConfigured()) {
+        return res.status(500).json({
+          success: false,
+          error: {
+            code: "SMS_NOT_CONFIGURED",
+            message: "SMS service is not properly configured. Please check Twilio credentials.",
+            statusCode: 500,
+          },
+        });
+      }
+
+      await this.smsService.sendTestMessage(phoneNumber);
+
+      return res.status(200).json({
+        success: true,
+        message: "Test SMS sent successfully",
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        error: {
+          code: "SMS_SEND_ERROR",
+          message: error.message || "Failed to send test SMS",
+          statusCode: 500,
+        },
+      });
+    }
+  }
+
+  /**
+   * @swagger
+   * /attendance/stats:
+   *   get:
+   *     summary: Get comprehensive attendance statistics with optional filtering
+   *     description: Calculate total present, absent, and attendance percentage with breakdowns by date, subject, and student
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: studentId
+   *         schema:
+   *           type: string
+   *         description: Filter by specific student ID
+   *       - in: query
+   *         name: subjectId
+   *         schema:
+   *           type: string
+   *         description: Filter by specific subject ID
+   *       - in: query
+   *         name: startDate
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: Start date for filtering (ISO format)
+   *       - in: query
+   *         name: endDate
+   *         schema:
+   *           type: string
+   *           format: date
+   *         description: End date for filtering (ISO format)
+   *     responses:
+   *       200:
+   *         description: Comprehensive attendance statistics
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     totalRecords:
+   *                       type: number
+   *                       description: Total number of attendance records
+   *                     totalPresent:
+   *                       type: number
+   *                       description: Total number of present records
+   *                     totalAbsent:
+   *                       type: number
+   *                       description: Total number of absent records
+   *                     attendancePercentage:
+   *                       type: number
+   *                       description: Overall attendance percentage
+   *                     checkedInCount:
+   *                       type: number
+   *                       description: Number of checked-in sessions
+   *                     checkedOutCount:
+   *                       type: number
+   *                       description: Number of checked-out sessions
+   *                     incompleteSessionsCount:
+   *                       type: number
+   *                       description: Number of incomplete sessions (checked-in but not checked-out)
+   *                     dailyBreakdown:
+   *                       type: array
+   *                       description: Daily attendance statistics
+   *                       items:
+   *                         type: object
+   *                         properties:
+   *                           date:
+   *                             type: string
+   *                             format: date
+   *                           present:
+   *                             type: number
+   *                           absent:
+   *                             type: number
+   *                           total:
+   *                             type: number
+   *                           attendancePercentage:
+   *                             type: number
+   *                     subjectBreakdown:
+   *                       type: array
+   *                       description: Subject-wise attendance statistics (only when not filtering by subject)
+   *                       items:
+   *                         type: object
+   *                         properties:
+   *                           subjectId:
+   *                             type: string
+   *                           subjectName:
+   *                             type: string
+   *                           present:
+   *                             type: number
+   *                           absent:
+   *                             type: number
+   *                           total:
+   *                             type: number
+   *                           attendancePercentage:
+   *                             type: number
+   *                     studentBreakdown:
+   *                       type: array
+   *                       description: Student-wise attendance statistics (only when not filtering by student)
+   *                       items:
+   *                         type: object
+   *                         properties:
+   *                           studentId:
+   *                             type: string
+   *                           studentName:
+   *                             type: string
+   *                           present:
+   *                             type: number
+   *                           absent:
+   *                             type: number
+   *                           total:
+   *                             type: number
+   *                           attendancePercentage:
+   *                             type: number
+   *       403:
+   *         description: Unauthorized access
+   *       500:
+   *         description: Server error
+   *     tags: [Attendance]
+   */
+  @route.get("/stats")
+  async getOverallAttendanceStats(req: Request, res: Response): Promise<Response> {
+    try {
+      const { studentId, subjectId, startDate, endDate } = req.query;
+
+      // Build filters object
+      const filters: {
+        studentId?: string;
+        subjectId?: string;
+        startDate?: Date;
+        endDate?: Date;
+      } = {};
+
+      if (studentId) filters.studentId = studentId as string;
+      if (subjectId) filters.subjectId = subjectId as string;
+      if (startDate) filters.startDate = new Date(startDate as string);
+      if (endDate) filters.endDate = new Date(endDate as string);
+
+      const stats = await this.attendanceService.calculateOverallAttendanceStats(
+        Object.keys(filters).length > 0 ? filters : undefined
+      );
+
+      return res.status(200).json({
+        success: true,
+        data: stats,
+      });
+    } catch (error: any) {
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || "STATS_CALCULATION_ERROR",
+          message: error.message || "Failed to calculate attendance statistics",
           statusCode: error.statusCode || 500,
         },
       });

@@ -1,29 +1,31 @@
+import mongoose from "mongoose";
 import { AttendanceModel } from "../models/attendanceModel";
+import AttendanceSchema from "../models/attendanceModel";
+import { Student } from "../models/studentModel";
 import { Subject } from "../models/subjectModel";
-import { Student, StudentModel } from "../models/studentModel";
 import { AttendanceRepository } from "../repositories/attendanceRepository";
 import { FaceRecognitionService } from "./faceRecognitionService";
-import mongoose from "mongoose";
+import { SMSService } from "./smsService";
 
 export class AttendanceService {
   private faceRecognitionService: FaceRecognitionService;
   private attendanceRepository: AttendanceRepository;
+  private smsService: SMSService;
 
   constructor() {
     this.faceRecognitionService = new FaceRecognitionService();
     this.attendanceRepository = new AttendanceRepository();
+    this.smsService = new SMSService();
   }
 
   /**
    * Process attendance using face recognition for a specific subject
    * @param photoBuffer - Buffer of the photo to verify
-   * @param student - Student attempting to check in/out
    * @param subjectId - ID of the subject for attendance
    * @param filename - Original filename of the uploaded photo
    */
   async processAttendance(
     photoBuffer: Buffer,
-    student: StudentModel,
     subjectId: string,
     filename: string
   ): Promise<AttendanceModel> {
@@ -40,12 +42,12 @@ export class AttendanceService {
     const currentTime = new Date();
     const currentDay = currentTime.toLocaleDateString("en-US", { weekday: "long" });
 
-    if (subject.schedule.day !== currentDay) {
-      const error = new Error(`No class scheduled for ${currentDay}`) as any;
-      error.statusCode = 400;
-      error.code = "NO_CLASS_SCHEDULED";
-      throw error;
-    }
+    // if (subject.schedule.day !== currentDay) {
+    //   const error = new Error(`No class scheduled for ${currentDay}`) as any;
+    //   error.statusCode = 400;
+    //   error.code = "NO_CLASS_SCHEDULED";
+    //   throw error;
+    // }
 
     // const currentTimeStr = currentTime.toTimeString().slice(0, 5); // HH:MM format
     // if (currentTimeStr < subject.schedule.startTime || currentTimeStr > subject.schedule.endTime) {
@@ -55,21 +57,7 @@ export class AttendanceService {
     //   throw error;
     // }
 
-    // Check if user has personId (enrolled face)
-    if (!student.personId) {
-      const error = new Error("Student has not enrolled their face") as any;
-      error.statusCode = 400;
-      error.code = "FACE_NOT_ENROLLED";
-      throw error;
-    }
-
-    // Get latest attendance record for the student in this subject
-    const latestAttendance = await this.attendanceRepository.findLatestByStudentAndSubject(
-      student._id,
-      subjectId
-    );
-
-    // Verify the person's face only after all other validations pass
+    // Use face recognition to identify the student
     const verificationResult = await this.faceRecognitionService.verifyPerson(
       photoBuffer,
       "1",
@@ -85,8 +73,6 @@ export class AttendanceService {
 
     const match = verificationResult[0];
     console.log("Face verification match:", match);
-    console.log("Student personId:", student.personId);
-    console.log("Student _id:", student._id.toString());
 
     if (match.confidence < 0.8) {
       const error = new Error("Face verification confidence too low") as any;
@@ -95,18 +81,42 @@ export class AttendanceService {
       throw error;
     }
 
-    // Check if the name matches the students ID (which we used as the name during enrollment)
-    if (match.name !== student._id.toString()) {
-      const error = new Error("Face does not match registered student") as any;
-      error.statusCode = 400;
-      error.code = "FACE_MISMATCH";
+    // Find the student using the name from face recognition (which is the student ID)
+    const student = await Student.findById(match.name);
+    if (!student) {
+      const error = new Error("Student not found in database") as any;
+      error.statusCode = 404;
+      error.code = "STUDENT_NOT_FOUND";
       throw error;
     }
 
+    // Check if student has personId (enrolled face)
+    if (!student.personId) {
+      const error = new Error("Student has not enrolled their face") as any;
+      error.statusCode = 400;
+      error.code = "FACE_NOT_ENROLLED";
+      throw error;
+    }
+
+    console.log("Student identified:", {
+      studentId: student._id.toString(),
+      firstName: student.firstName,
+      lastName: student.lastName,
+      personId: student.personId,
+    });
+
+    // Get latest attendance record for the student in this subject
+    const latestAttendance = await this.attendanceRepository.findLatestByStudentAndSubject(
+      student._id,
+      subjectId
+    );
+
     try {
+      let attendanceRecord: AttendanceModel;
+
       if (!latestAttendance || latestAttendance.status === "checked-out") {
         // Create check-in record
-        return await this.attendanceRepository.create({
+        attendanceRecord = await this.attendanceRepository.create({
           studentId: student._id,
           subjectId: subject._id,
           personId: student.personId,
@@ -120,8 +130,46 @@ export class AttendanceService {
         latestAttendance.checkOutTime = new Date();
         latestAttendance.status = "checked-out";
         latestAttendance.attendanceStatus = "present";
-        return await this.attendanceRepository.update(latestAttendance);
+        attendanceRecord = await this.attendanceRepository.update(latestAttendance);
       }
+
+      // Send SMS notification to guardian
+      try {
+        await this.smsService.sendAttendanceNotification(
+          student,
+          subject.name,
+          attendanceRecord.status,
+          attendanceRecord.status === "checked-in"
+            ? attendanceRecord.checkInTime
+            : attendanceRecord.checkOutTime!
+        );
+      } catch (smsError: any) {
+        // Log SMS error but don't fail the attendance process
+        console.warn("Failed to send SMS notification:", smsError.message);
+      }
+
+      // Populate the response with full student and subject data
+      const populatedResponse = {
+        ...attendanceRecord.toObject(),
+        studentId: {
+          _id: student._id,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          email: student.email,
+          section: student.section,
+          strand: student.strand,
+          image: student.image,
+          personId: student.personId,
+        },
+        subjectId: {
+          _id: subject._id,
+          code: subject.code,
+          name: subject.name,
+          schedule: subject.schedule,
+        },
+      };
+
+      return populatedResponse as AttendanceModel;
     } catch (error) {
       const err = new Error("Failed to process attendance record") as any;
       err.statusCode = 500;
@@ -433,6 +481,261 @@ export class AttendanceService {
       const err = new Error("Failed to fetch attendance records") as any;
       err.statusCode = 500;
       err.code = "FETCH_ERROR";
+      throw err;
+    }
+  }
+
+  /**
+   * Calculate overall attendance statistics with optional filtering
+   * @param filters - Optional filters for student, subject, and date range
+   */
+  async calculateOverallAttendanceStats(filters?: {
+    studentId?: string;
+    subjectId?: string;
+    startDate?: Date;
+    endDate?: Date;
+  }): Promise<{
+    totalRecords: number;
+    totalPresent: number;
+    totalAbsent: number;
+    attendancePercentage: number;
+    checkedInCount: number;
+    checkedOutCount: number;
+    incompleteSessionsCount: number;
+    dailyBreakdown?: Array<{
+      date: string;
+      present: number;
+      absent: number;
+      total: number;
+      attendancePercentage: number;
+    }>;
+    subjectBreakdown?: Array<{
+      subjectId: string;
+      subjectName: string;
+      present: number;
+      absent: number;
+      total: number;
+      attendancePercentage: number;
+    }>;
+    studentBreakdown?: Array<{
+      studentId: string;
+      studentName: string;
+      present: number;
+      absent: number;
+      total: number;
+      attendancePercentage: number;
+    }>;
+  }> {
+    try {
+      // Build query filters
+      const query: any = {};
+
+      if (filters?.studentId) {
+        query.studentId = new mongoose.Types.ObjectId(filters.studentId);
+      }
+
+      if (filters?.subjectId) {
+        query.subjectId = new mongoose.Types.ObjectId(filters.subjectId);
+      }
+
+      if (filters?.startDate || filters?.endDate) {
+        query.createdAt = {};
+        if (filters.startDate) {
+          query.createdAt.$gte = filters.startDate;
+        }
+        if (filters.endDate) {
+          query.createdAt.$lte = filters.endDate;
+        }
+      }
+
+      // Get filtered attendance records with populated data
+      const records = await AttendanceSchema.find(query)
+        .populate("studentId", "firstName lastName email")
+        .populate("subjectId", "name code")
+        .sort({ createdAt: -1 });
+
+      // Calculate basic statistics
+      const totalRecords = records.length;
+      const totalPresent = records.filter(
+        (record: AttendanceModel) => record.attendanceStatus === "present"
+      ).length;
+      const totalAbsent = records.filter(
+        (record: AttendanceModel) => record.attendanceStatus === "absent"
+      ).length;
+      const attendancePercentage =
+        totalRecords > 0 ? Math.round((totalPresent / totalRecords) * 10000) / 100 : 0;
+
+      const checkedInCount = records.filter(
+        (record: AttendanceModel) => record.status === "checked-in"
+      ).length;
+      const checkedOutCount = records.filter(
+        (record: AttendanceModel) => record.status === "checked-out"
+      ).length;
+      const incompleteSessionsCount = checkedInCount - checkedOutCount;
+
+      // Calculate daily breakdown
+      const dailyStats = new Map<string, { present: number; absent: number; total: number }>();
+
+      records.forEach((record: AttendanceModel) => {
+        const dateKey = record.createdAt.toISOString().split("T")[0]; // YYYY-MM-DD format
+
+        if (!dailyStats.has(dateKey)) {
+          dailyStats.set(dateKey, { present: 0, absent: 0, total: 0 });
+        }
+
+        const dayStats = dailyStats.get(dateKey)!;
+        dayStats.total++;
+
+        if (record.attendanceStatus === "present") {
+          dayStats.present++;
+        } else {
+          dayStats.absent++;
+        }
+      });
+
+      const dailyBreakdown = Array.from(dailyStats.entries())
+        .map(([date, stats]) => ({
+          date,
+          present: stats.present,
+          absent: stats.absent,
+          total: stats.total,
+          attendancePercentage:
+            stats.total > 0 ? Math.round((stats.present / stats.total) * 10000) / 100 : 0,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      // Calculate subject breakdown (if not filtering by specific subject)
+      let subjectBreakdown:
+        | Array<{
+            subjectId: string;
+            subjectName: string;
+            present: number;
+            absent: number;
+            total: number;
+            attendancePercentage: number;
+          }>
+        | undefined;
+
+      if (!filters?.subjectId) {
+        const subjectStats = new Map<
+          string,
+          {
+            name: string;
+            present: number;
+            absent: number;
+            total: number;
+          }
+        >();
+
+        records.forEach((record: AttendanceModel) => {
+          if (
+            record.subjectId &&
+            typeof record.subjectId === "object" &&
+            "name" in record.subjectId
+          ) {
+            const subjectId = (record.subjectId as any)._id.toString();
+            const subjectName = (record.subjectId as any).name;
+
+            if (!subjectStats.has(subjectId)) {
+              subjectStats.set(subjectId, { name: subjectName, present: 0, absent: 0, total: 0 });
+            }
+
+            const stats = subjectStats.get(subjectId)!;
+            stats.total++;
+
+            if (record.attendanceStatus === "present") {
+              stats.present++;
+            } else {
+              stats.absent++;
+            }
+          }
+        });
+
+        subjectBreakdown = Array.from(subjectStats.entries()).map(([subjectId, stats]) => ({
+          subjectId,
+          subjectName: stats.name,
+          present: stats.present,
+          absent: stats.absent,
+          total: stats.total,
+          attendancePercentage:
+            stats.total > 0 ? Math.round((stats.present / stats.total) * 10000) / 100 : 0,
+        }));
+      }
+
+      // Calculate student breakdown (if not filtering by specific student)
+      let studentBreakdown:
+        | Array<{
+            studentId: string;
+            studentName: string;
+            present: number;
+            absent: number;
+            total: number;
+            attendancePercentage: number;
+          }>
+        | undefined;
+
+      if (!filters?.studentId) {
+        const studentStats = new Map<
+          string,
+          {
+            name: string;
+            present: number;
+            absent: number;
+            total: number;
+          }
+        >();
+
+        records.forEach((record: AttendanceModel) => {
+          if (
+            record.studentId &&
+            typeof record.studentId === "object" &&
+            "firstName" in record.studentId
+          ) {
+            const studentId = (record.studentId as any)._id.toString();
+            const studentName = `${(record.studentId as any).firstName} ${(record.studentId as any).lastName}`;
+
+            if (!studentStats.has(studentId)) {
+              studentStats.set(studentId, { name: studentName, present: 0, absent: 0, total: 0 });
+            }
+
+            const stats = studentStats.get(studentId)!;
+            stats.total++;
+
+            if (record.attendanceStatus === "present") {
+              stats.present++;
+            } else {
+              stats.absent++;
+            }
+          }
+        });
+
+        studentBreakdown = Array.from(studentStats.entries()).map(([studentId, stats]) => ({
+          studentId,
+          studentName: stats.name,
+          present: stats.present,
+          absent: stats.absent,
+          total: stats.total,
+          attendancePercentage:
+            stats.total > 0 ? Math.round((stats.present / stats.total) * 10000) / 100 : 0,
+        }));
+      }
+
+      return {
+        totalRecords,
+        totalPresent,
+        totalAbsent,
+        attendancePercentage,
+        checkedInCount,
+        checkedOutCount,
+        incompleteSessionsCount,
+        dailyBreakdown,
+        subjectBreakdown,
+        studentBreakdown,
+      };
+    } catch (error: any) {
+      const err = new Error("Failed to calculate attendance statistics") as any;
+      err.statusCode = 500;
+      err.code = "STATS_CALCULATION_ERROR";
       throw err;
     }
   }

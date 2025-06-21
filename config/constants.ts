@@ -15,8 +15,28 @@ export const config = {
   },
 
   CLOUDINARY: {
-    CLOUD_NAME: "plaque-dev",
-    API_KEY: "479834719534576",
-    API_SECRET: "0GgNG5UZbls7f2ecgjVbc5AcUtM",
+    CLOUD_NAME: "attendance-dev",
+    API_KEY: "862261129126219",
+    API_SECRET: "Eh2EtDiOFUJLcGSikyx3WCi1HHE",
+  },
+
+  TWILIO: {
+    ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || "AC597f4a549b133a27d881dccbea0596ba",
+    AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || "972804059e38b0c20c23a0bb767be33f",
+    PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER || "",
   },
 };
+
+// Define enums for student remarks
+export enum StudentRemarks {
+  EXCUSE = "excuse",
+  LATE = "late",
+  EARLY_DISMISSAL = "early_dismissal",
+  SICK = "sick",
+  FAMILY_EMERGENCY = "family_emergency",
+  MEDICAL_APPOINTMENT = "medical_appointment",
+  OFFICIAL_BUSINESS = "official_business",
+  SUSPENSION = "suspension",
+  GOOD_STANDING = "good_standing",
+  NONE = "none",
+}

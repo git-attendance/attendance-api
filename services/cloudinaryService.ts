@@ -9,7 +9,7 @@ export class CloudinaryService {
 
       const result = await cloudinary.uploader.upload(dataURI, {
         resource_type: "auto",
-        folder: "user-avatars",
+        folder: "user-images",
         use_filename: true,
         unique_filename: true,
         overwrite: true,

@@ -3,6 +3,8 @@ import { route } from "express-extract-routes";
 import { AuthMiddleware, Authenticated } from "../middleware/authMiddleware";
 import { UseMiddleware } from "../middleware/useMiddleware";
 import { StudentService } from "../services/studentService";
+import { CloudinaryService } from "../services/cloudinaryService";
+import { upload } from "../middleware/multer";
 
 // Purpose: This controller class is responsible for handling the student related requests.
 @route("/student")
@@ -12,10 +14,12 @@ import { StudentService } from "../services/studentService";
 export class StudentController {
   private studentService: StudentService;
   private authMiddleware: AuthMiddleware;
+  private cloudinaryService: CloudinaryService;
 
   constructor() {
     this.studentService = new StudentService();
     this.authMiddleware = new AuthMiddleware();
+    this.cloudinaryService = new CloudinaryService();
   }
 
   /**
@@ -262,6 +266,101 @@ export class StudentController {
         error: {
           code: error.code || "STUDENT_SEARCH_ERROR",
           message: error.message || "Failed to search student",
+          statusCode: error.statusCode || 500,
+        },
+      });
+    }
+  }
+
+  /**
+   * @swagger
+   * /student/{id}/upload-image:
+   *   post:
+   *     summary: Upload student image
+   *     tags: [Student]
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: The student ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         multipart/form-data:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               image:
+   *                 type: string
+   *                 format: binary
+   *                 description: Image file to upload
+   *     responses:
+   *       200:
+   *         description: Image uploaded successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     imageUrl:
+   *                       type: string
+   *                     student:
+   *                       type: object
+   *                 message:
+   *                   type: string
+   *       400:
+   *         description: Invalid file or student ID
+   *       404:
+   *         description: Student not found
+   */
+  @route.post("/:id/upload-image")
+  @UseMiddleware(upload.single("image"))
+  @UseMiddleware(new AuthMiddleware().authorize("admin", "teacher"))
+  async uploadImage(req: Request, res: Response): Promise<Response> {
+    try {
+      const { id } = req.params;
+
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          error: {
+            code: "NO_FILE_PROVIDED",
+            message: "Please provide an image file",
+            statusCode: 400,
+          },
+        });
+      }
+
+      // Upload image to Cloudinary
+      const imageUrl = await this.cloudinaryService.uploadImage(req.file);
+
+      // Update student with new image URL
+      const updatedStudent = await this.studentService.updateStudent({
+        _id: id,
+        image: imageUrl,
+      });
+
+      return res.status(200).json({
+        success: true,
+        data: {
+          imageUrl,
+          student: updatedStudent,
+        },
+        message: "Image uploaded successfully",
+      });
+    } catch (error: any) {
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || "IMAGE_UPLOAD_ERROR",
+          message: error.message || "Failed to upload image",
           statusCode: error.statusCode || 500,
         },
       });
