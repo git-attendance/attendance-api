@@ -6,6 +6,8 @@ export interface EventModel extends Document {
   location: string;
   type: "academic" | "examination" | "holiday" | "activity" | "meeting";
   organizerId: mongoose.Types.ObjectId;
+  color?: string;
+  bgColor?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,6 +30,14 @@ const eventSchema = new Schema<EventModel>(
       type: String,
       enum: ["academic", "examination", "holiday", "activity", "meeting"],
       required: true,
+    },
+    color: {
+      type: String,
+      default: "#FFFFFF",
+    },
+    bgColor: {
+      type: String,
+      default: "#000000",
     },
     organizerId: {
       type: Schema.Types.ObjectId,
