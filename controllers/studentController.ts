@@ -366,4 +366,50 @@ export class StudentController {
       });
     }
   }
+
+  /**
+   * @swagger
+   * /student/export/csv:
+   *   get:
+   *     summary: Export all students to CSV file (Admin and Teacher only)
+   *     tags: [Student]
+   *     responses:
+   *       200:
+   *         description: CSV file with student data
+   *         content:
+   *           text/csv:
+   *             schema:
+   *               type: string
+   *               format: binary
+   *         headers:
+   *           Content-Disposition:
+   *             description: Attachment with filename
+   *             schema:
+   *               type: string
+   *               example: attachment; filename="students_2024-01-01T12-00-00.csv"
+   *       500:
+   *         description: Failed to export students
+   */
+  @route.get("/export/csv")
+  @UseMiddleware(new AuthMiddleware().authorize("admin", "teacher"))
+  async exportCSV(_req: Request, res: Response): Promise<Response> {
+    try {
+      const { csvData, filename } = await this.studentService.exportStudentsToCSV();
+
+      // Set headers for CSV download
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+      return res.status(200).send(csvData);
+    } catch (error: any) {
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || "CSV_EXPORT_ERROR",
+          message: error.message || "Failed to export students to CSV",
+          statusCode: error.statusCode || 500,
+        },
+      });
+    }
+  }
 }
