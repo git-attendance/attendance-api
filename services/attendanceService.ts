@@ -134,19 +134,19 @@ export class AttendanceService {
       }
 
       // Send SMS notification to guardian
-      try {
-        await this.smsService.sendAttendanceNotification(
-          student,
-          subject.name,
-          attendanceRecord.status,
-          attendanceRecord.status === "checked-in"
-            ? attendanceRecord.checkInTime
-            : attendanceRecord.checkOutTime!
-        );
-      } catch (smsError: any) {
-        // Log SMS error but don't fail the attendance process
-        console.warn("Failed to send SMS notification:", smsError.message);
-      }
+      // try {
+      //   await this.smsService.sendAttendanceNotification(
+      //     student,
+      //     subject.name,
+      //     attendanceRecord.status,
+      //     attendanceRecord.status === "checked-in"
+      //       ? attendanceRecord.checkInTime
+      //       : attendanceRecord.checkOutTime!
+      //   );
+      // } catch (smsError: any) {
+      //   // Log SMS error but don't fail the attendance process
+      //   console.warn("Failed to send SMS notification:", smsError.message);
+      // }
 
       // Populate the response with full student and subject data
       const populatedResponse = {
