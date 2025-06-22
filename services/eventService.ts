@@ -1,11 +1,14 @@
 import { EventModel } from "../models/eventModel";
 import { EventRepository } from "../repositories/eventRepository";
+import { EmailService } from "./emailService";
 
 export class EventService {
   private eventRepository: EventRepository;
+  private emailService: EmailService;
 
   constructor() {
     this.eventRepository = new EventRepository();
+    this.emailService = new EmailService();
   }
 
   /**
@@ -14,7 +17,17 @@ export class EventService {
    */
   async createEvent(eventData: Partial<EventModel>): Promise<EventModel> {
     try {
-      return await this.eventRepository.create(eventData);
+      const createdEvent = await this.eventRepository.create(eventData);
+
+      // Send email notification to all users
+      try {
+        await this.emailService.sendEventNotificationToAllUsers(createdEvent);
+      } catch (emailError: any) {
+        // Log email error but don't fail the event creation
+        console.error("Failed to send email notifications:", emailError);
+      }
+
+      return createdEvent;
     } catch (error: any) {
       const err = new Error("Failed to create event") as any;
       err.statusCode = 500;

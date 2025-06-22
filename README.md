@@ -30,6 +30,8 @@ npm install
 PORT=5000
 MONGODB_URI=mongodb://localhost:27017/your-database
 NODE_ENV=development
+EMAIL_USER=your-email@gmail.com
+EMAIL_PASSWORD=your-app-password
 ```
 
 4. Start the development server:
@@ -62,11 +64,27 @@ npm run dev
 
 ## 🔒 Environment Variables
 
-| Variable    | Description            | Default     |
-| ----------- | ---------------------- | ----------- |
-| PORT        | Server port            | 5000        |
-| MONGODB_URI | MongoDB connection URL | -           |
-| NODE_ENV    | Environment            | development |
+| Variable       | Description                     | Default     |
+| -------------- | ------------------------------- | ----------- |
+| PORT           | Server port                     | 5000        |
+| MONGODB_URI    | MongoDB connection URL          | -           |
+| NODE_ENV       | Environment                     | development |
+| EMAIL_USER     | Email account for notifications | -           |
+| EMAIL_PASSWORD | Email app password              | -           |
+
+### 📧 Email Configuration (Gmail)
+
+To enable email notifications for events:
+
+1. Enable 2-Factor Authentication on your Gmail account
+2. Generate an App Password:
+   - Go to Google Account settings
+   - Security → 2-Step Verification → App passwords
+   - Generate a password for "Mail"
+3. Use your Gmail address for `EMAIL_USER`
+4. Use the generated app password for `EMAIL_PASSWORD`
+
+**Note**: Email notifications are sent automatically when new events are created. All users with email addresses in the database will receive notifications.
 
 ## 🔗 API Endpoints
 
