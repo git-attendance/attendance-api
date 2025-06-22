@@ -449,19 +449,30 @@ export class AttendanceService {
     absent: number;
     records: AttendanceModel[];
   }> {
-    // Get today's date range
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    // Get today's date range in Philippines timezone (UTC+8)
+    const philippinesOffset = 8 * 60; // 8 hours in minutes
+    const now = new Date();
 
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    // Convert current time to Philippines time
+    const philippinesTime = new Date(now.getTime() + philippinesOffset * 60 * 1000);
+
+    // Get start of day in Philippines timezone
+    const todayPhilippines = new Date(
+      philippinesTime.getFullYear(),
+      philippinesTime.getMonth(),
+      philippinesTime.getDate()
+    );
+
+    // Convert back to UTC for database query
+    const todayUTC = new Date(todayPhilippines.getTime() - philippinesOffset * 60 * 1000);
+    const tomorrowUTC = new Date(todayUTC.getTime() + 24 * 60 * 60 * 1000);
 
     try {
       // Get all attendance records for today
       const records = await this.attendanceRepository.findByFilter({
         createdAt: {
-          $gte: today,
-          $lt: tomorrow,
+          $gte: todayUTC,
+          $lt: tomorrowUTC,
         },
       });
 
@@ -471,7 +482,7 @@ export class AttendanceService {
       const absent = records.filter((r) => r.attendanceStatus === "absent").length;
 
       return {
-        date: today.toISOString().split("T")[0], // YYYY-MM-DD format
+        date: todayPhilippines.toISOString().split("T")[0], // YYYY-MM-DD format in Philippines date
         total,
         present,
         absent,
