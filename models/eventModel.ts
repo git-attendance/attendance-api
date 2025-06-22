@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface EventModel extends Document {
   name: string;
-  date: Date;
+  date?: Date;
   description?: string;
   location: string;
   type: "academic" | "examination" | "holiday" | "activity" | "meeting";
@@ -23,7 +23,6 @@ const eventSchema = new Schema<EventModel>(
     },
     date: {
       type: Date,
-      required: true,
     },
     description: {
       type: String,

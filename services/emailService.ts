@@ -25,7 +25,9 @@ export class EmailService {
     try {
       // Get all users with email addresses
       const users = await this.userRepository.getUsers();
-      const emailRecipients = users.filter((user) => user.email).map((user) => user.email);
+      const emailRecipients = users
+        .filter((user) => user.email)
+        .map((user) => user.email);
 
       if (emailRecipients.length === 0) {
         console.log("No users with email addresses found");
@@ -60,7 +62,8 @@ export class EmailService {
    * @param event - Event data
    */
   private generateEventEmailHTML(event: EventModel): string {
-    const formatDate = (date: Date) => {
+    const formatDate = (date: Date | undefined) => {
+      if (!date) return "N/A";
       return new Date(date).toLocaleDateString("en-US", {
         year: "numeric",
         month: "long",
@@ -74,52 +77,51 @@ export class EmailService {
       <!DOCTYPE html>
       <html>
       <head>
-        <meta charset="utf-8">
-        <title>New Event Notification</title>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
-          .content { padding: 20px; background-color: #f9f9f9; }
-          .event-details { background-color: white; padding: 15px; margin: 10px 0; border-radius: 5px; }
-          .event-type { 
-            display: inline-block; 
-            padding: 5px 10px; 
-            border-radius: 3px; 
-            color: white;
-            font-size: 12px;
-            text-transform: uppercase;
-            ${this.getEventTypeStyle(event.type)}
-          }
-          .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
-        </style>
+      <meta charset="utf-8">
+      <title>New Event Notification</title>
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
+        .content { padding: 20px; background-color: #f9f9f9; }
+        .event-details { background-color: white; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .event-type { 
+        display: inline-block; 
+        padding: 5px 10px; 
+        border-radius: 3px; 
+        color: white;
+        font-size: 12px;
+        text-transform: uppercase;
+        ${this.getEventTypeStyle(event.type)}
+        }
+        .footer { text-align: center; padding: 20px; font-size: 12px; color: #666; }
+      </style>
       </head>
       <body>
-        <div class="container">
-          <div class="header">
-            <h1>📅 New Event Created</h1>
-          </div>
-          <div class="content">
-            <h2>Hello!</h2>
-            <p>A new event has been created in the attendance system. Here are the details:</p>
-            
-            <div class="event-details">
-              <h3>${event.name}</h3>
-              <p><strong>📅 Date:</strong> ${formatDate(event.date)}</p>
-              <p><strong>📍 Location:</strong> ${event.location}</p>
-              <p><strong>🏷️ Type:</strong> <span class="event-type">${event.type}</span></p>
-              ${event.description ? `<p><strong>📝 Description:</strong> ${event.description}</p>` : ""}
-              ${event.startDate ? `<p><strong>⏰ Start Date:</strong> ${formatDate(event.startDate)}</p>` : ""}
-              ${event.endDate ? `<p><strong>⏰ End Date:</strong> ${formatDate(event.endDate)}</p>` : ""}
-            </div>
-            
-            <p>Please make sure to mark your calendar and be prepared for this event.</p>
-          </div>
-          <div class="footer">
-            <p>This is an automated message from the Attendance Management System.</p>
-            <p>Please do not reply to this email.</p>
-          </div>
+      <div class="container">
+        <div class="header">
+        <h1>📅 New Event Created</h1>
         </div>
+        <div class="content">
+        <h2>Hello!</h2>
+        <p>A new event has been created in the attendance system. Here are the details:</p>
+        
+        <div class="event-details">
+          <h3>${event.name}</h3>
+          <p><strong>⏰ Start Date:</strong> ${formatDate(event.startDate)}</p>
+          <p><strong>⏰ End Date:</strong> ${formatDate(event.endDate)}</p>
+          <p><strong>📍 Location:</strong> ${event.location}</p>
+          <p><strong>🏷️ Type:</strong> <span class="event-type">${event.type}</span></p>
+          ${event.description ? `<p><strong>📝 Description:</strong> ${event.description}</p>` : ""}
+        </div>
+        
+        <p>Please make sure to mark your calendar and be prepared for this event.</p>
+        </div>
+        <div class="footer">
+        <p>This is an automated message from the Attendance Management System.</p>
+        <p>Please do not reply to this email.</p>
+        </div>
+      </div>
       </body>
       </html>
     `;
