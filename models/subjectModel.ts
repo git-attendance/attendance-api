@@ -2,17 +2,18 @@ import mongoose, { Document, Schema } from "mongoose";
 
 // Purpose: Define the subject model schema
 export interface SubjectModel extends Document {
-  code: string;           // Subject code (e.g., "MATH101")
-  name: string;          // Subject name (e.g., "Introduction to Calculus")
-  description: string;   // Subject description
+  code: string; // Subject code (e.g., "MATH101")
+  name: string; // Subject name (e.g., "Introduction to Calculus")
+  description: string; // Subject description
   schedule: {
-    day: string;        // Day of the week
-    startTime: string;  // Start time of the class
-    endTime: string;    // End time of the class
-    room: string;       // Room/venue of the class
+    day: string; // Day of the week
+    startTime: string; // Start time of the class
+    endTime: string; // End time of the class
+    room: string; // Room/venue of the class
   };
-  semester: string;     // Current semester (e.g., "Fall 2024")
-  instructor: mongoose.Types.ObjectId;   // Reference to User model (teacher)
+  semester: string; // Current semester (e.g., "Fall 2024")
+  instructor: mongoose.Types.ObjectId; // Reference to User model (teacher)
+  color: string; // Optional color for UI representation
   createdAt: Date;
   updatedAt: Date;
 }
@@ -36,7 +37,15 @@ const SubjectSchema = new Schema<SubjectModel>(
       day: {
         type: String,
         required: true,
-        enum: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'],
+        enum: [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday",
+          "Saturday",
+          "Sunday",
+        ],
       },
       startTime: {
         type: String,
@@ -57,8 +66,12 @@ const SubjectSchema = new Schema<SubjectModel>(
     },
     instructor: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
+    },
+    color: {
+      type: String,
+      default: "#FFFFFF",
     },
   },
   { timestamps: true }

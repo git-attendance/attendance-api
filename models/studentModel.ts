@@ -9,7 +9,7 @@ export interface StudentModel extends Document {
   studentId: string;
   gradeLevel: string;
   section: string;
-  strand: string;
+  strand?: string;
   email: string;
   dateOfBirth?: Date;
   personId?: string;
