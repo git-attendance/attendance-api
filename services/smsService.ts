@@ -16,7 +16,7 @@ export class SMSService {
   }
 
   /**
-   * Send attendance notification to guardian
+   * Send attendance notification to guardian via voice call
    * @param student - Student object with guardian information
    * @param subjectName - Name of the subject
    * @param status - "checked-in" or "checked-out"
@@ -31,7 +31,7 @@ export class SMSService {
     try {
       // Check if Twilio is configured
       if (!this.client || !config.TWILIO.PHONE_NUMBER) {
-        logger.warn("Twilio not configured. Skipping SMS notification.");
+        logger.warn("Twilio not configured. Skipping voice notification.");
         return false;
       }
 
@@ -63,27 +63,23 @@ export class SMSService {
         hour12: true,
       });
 
-      // Create the message based on status
+      // Create the voice message based on status
       const actionText = status === "checked-in" ? "checked in to" : "checked out from";
-      const message = `Hello ${student.guardian.firstName},
+      const voiceMessage = `Hello ${student.guardian.firstName}. This is an automated call from the School Attendance System. Your child ${student.firstName} ${student.lastName} has ${actionText} ${subjectName} at ${formattedTime}. Thank you.`;
 
-Your child ${student.firstName} ${student.lastName} has ${actionText} ${subjectName} at ${formattedTime}.
-
-- School Attendance System`;
-
-      // Send SMS
-      const result = await this.client.messages.create({
-        body: message,
+      // Make voice call with TTS
+      const result = await this.client.calls.create({
+        twiml: `<Response><Say voice="man" language="en-US">${voiceMessage}</Say></Response>`,
         from: config.TWILIO.PHONE_NUMBER,
         to: phoneNumber,
       });
 
       logger.info(
-        `SMS sent successfully to ${phoneNumber} for student ${student.firstName} ${student.lastName}. Message SID: ${result.sid}`
+        `Voice call initiated successfully to ${phoneNumber} for student ${student.firstName} ${student.lastName}. Call SID: ${result.sid}`
       );
       return true;
     } catch (error: any) {
-      logger.error(`Failed to send SMS notification: ${error.message}`, {
+      logger.error(`Failed to send voice notification: ${error.message}`, {
         studentId: student._id,
         guardianPhone: student.guardian?.phoneNumber,
         error: error.message,
@@ -93,8 +89,8 @@ Your child ${student.firstName} ${student.lastName} has ${actionText} ${subjectN
   }
 
   /**
-   * Send a test SMS to verify Twilio configuration
-   * @param phoneNumber - Phone number to send test SMS to
+   * Send a test voice call to verify Twilio configuration
+   * @param phoneNumber - Phone number to send test call to
    */
   async sendTestMessage(phoneNumber: string): Promise<boolean> {
     try {
@@ -110,16 +106,18 @@ Your child ${student.firstName} ${student.lastName} has ${actionText} ${subjectN
           : `+63${formattedPhone}`;
       }
 
-      const result = await this.client.messages.create({
-        body: "Test message from School Attendance System. SMS notifications are working correctly!",
+      const result = await this.client.calls.create({
+        twiml: `<Response><Say voice="man" language="en-US">Hello! This is a test call from the School Attendance System. Voice notifications are working correctly. Thank you.</Say></Response>`,
         from: config.TWILIO.PHONE_NUMBER,
         to: formattedPhone,
       });
 
-      logger.info(`Test SMS sent successfully to ${formattedPhone}. Message SID: ${result.sid}`);
+      logger.info(
+        `Test voice call initiated successfully to ${formattedPhone}. Call SID: ${result.sid}`
+      );
       return true;
     } catch (error: any) {
-      logger.error(`Failed to send test SMS: ${error.message}`);
+      logger.error(`Failed to send test voice call: ${error.message}`);
       throw error;
     }
   }

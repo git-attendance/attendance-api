@@ -22,8 +22,8 @@ export const config = {
 
   TWILIO: {
     ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || "AC597f4a549b133a27d881dccbea0596ba",
-    AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || "972804059e38b0c20c23a0bb767be33f",
-    PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER || "",
+    AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || "5f4a19b4a1819a1ae848f634540427ed",
+    PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER || "+63427194206",
   },
 };
 
