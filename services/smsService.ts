@@ -7,16 +7,21 @@ export class SMSService {
   private client?: twilio.Twilio;
 
   constructor() {
-    if (!config.TWILIO.ACCOUNT_SID || !config.TWILIO.AUTH_TOKEN) {
+    if (!config.TWILIO.ACCOUNT_SID || (!config.TWILIO.API_SECRET && !config.TWILIO.AUTH_TOKEN)) {
       logger.warn("Twilio credentials not configured. SMS notifications will be disabled.");
       return;
     }
 
-    this.client = twilio(config.TWILIO.ACCOUNT_SID, config.TWILIO.AUTH_TOKEN);
+    // Use API Key if available (recommended), otherwise fallback to Auth Token
+    if (config.TWILIO.API_KEY_SID && config.TWILIO.API_SECRET) {
+      this.client = twilio(config.TWILIO.API_KEY_SID, config.TWILIO.API_SECRET, {
+        accountSid: config.TWILIO.ACCOUNT_SID,
+      });
+    }
   }
 
   /**
-   * Send attendance notification to guardian via voice call
+   * Send attendance notification to guardian via SMS
    * @param student - Student object with guardian information
    * @param subjectName - Name of the subject
    * @param status - "checked-in" or "checked-out"
@@ -31,7 +36,7 @@ export class SMSService {
     try {
       // Check if Twilio is configured
       if (!this.client || !config.TWILIO.PHONE_NUMBER) {
-        logger.warn("Twilio not configured. Skipping voice notification.");
+        logger.warn("Twilio not configured. Skipping SMS notification.");
         return false;
       }
 
@@ -63,23 +68,27 @@ export class SMSService {
         hour12: true,
       });
 
-      // Create the voice message based on status
+      // Create the SMS message based on status
       const actionText = status === "checked-in" ? "checked in to" : "checked out from";
-      const voiceMessage = `Hello ${student.guardian.firstName}. This is an automated call from the School Attendance System. Your child ${student.firstName} ${student.lastName} has ${actionText} ${subjectName} at ${formattedTime}. Thank you.`;
+      const message = `Hello ${student.guardian.firstName},
 
-      // Make voice call with TTS
-      const result = await this.client.calls.create({
-        twiml: `<Response><Say voice="man" language="en-US">${voiceMessage}</Say></Response>`,
+Your child ${student.firstName} ${student.lastName} has ${actionText} ${subjectName} at ${formattedTime}.
+
+- School Attendance System`;
+
+      // Send SMS
+      const result = await this.client.messages.create({
+        body: message,
         from: config.TWILIO.PHONE_NUMBER,
         to: phoneNumber,
       });
 
       logger.info(
-        `Voice call initiated successfully to ${phoneNumber} for student ${student.firstName} ${student.lastName}. Call SID: ${result.sid}`
+        `SMS sent successfully to ${phoneNumber} for student ${student.firstName} ${student.lastName}. Message SID: ${result.sid}`
       );
       return true;
     } catch (error: any) {
-      logger.error(`Failed to send voice notification: ${error.message}`, {
+      logger.error(`Failed to send SMS notification: ${error.message}`, {
         studentId: student._id,
         guardianPhone: student.guardian?.phoneNumber,
         error: error.message,
@@ -89,8 +98,8 @@ export class SMSService {
   }
 
   /**
-   * Send a test voice call to verify Twilio configuration
-   * @param phoneNumber - Phone number to send test call to
+   * Send a test SMS to verify Twilio configuration
+   * @param phoneNumber - Phone number to send test SMS to
    */
   async sendTestMessage(phoneNumber: string): Promise<boolean> {
     try {
@@ -106,18 +115,16 @@ export class SMSService {
           : `+63${formattedPhone}`;
       }
 
-      const result = await this.client.calls.create({
-        twiml: `<Response><Say voice="man" language="en-US">Hello! This is a test call from the School Attendance System. Voice notifications are working correctly. Thank you.</Say></Response>`,
+      const result = await this.client.messages.create({
+        body: "Test message from School Attendance System. SMS notifications are working correctly!",
         from: config.TWILIO.PHONE_NUMBER,
         to: formattedPhone,
       });
 
-      logger.info(
-        `Test voice call initiated successfully to ${formattedPhone}. Call SID: ${result.sid}`
-      );
+      logger.info(`Test SMS sent successfully to ${formattedPhone}. Message SID: ${result.sid}`);
       return true;
     } catch (error: any) {
-      logger.error(`Failed to send test voice call: ${error.message}`);
+      logger.error(`Failed to send test SMS: ${error.message}`);
       throw error;
     }
   }
