@@ -7,16 +7,21 @@ export class SMSService {
   private client?: twilio.Twilio;
 
   constructor() {
-    if (!config.TWILIO.ACCOUNT_SID || !config.TWILIO.AUTH_TOKEN) {
+    if (!config.TWILIO.ACCOUNT_SID || (!config.TWILIO.API_SECRET && !config.TWILIO.AUTH_TOKEN)) {
       logger.warn("Twilio credentials not configured. SMS notifications will be disabled.");
       return;
     }
 
-    this.client = twilio(config.TWILIO.ACCOUNT_SID, config.TWILIO.AUTH_TOKEN);
+    // Use API Key if available (recommended), otherwise fallback to Auth Token
+    if (config.TWILIO.API_KEY_SID && config.TWILIO.API_SECRET) {
+      this.client = twilio(config.TWILIO.API_KEY_SID, config.TWILIO.API_SECRET, {
+        accountSid: config.TWILIO.ACCOUNT_SID,
+      });
+    }
   }
 
   /**
-   * Send attendance notification to guardian
+   * Send attendance notification to guardian via SMS
    * @param student - Student object with guardian information
    * @param subjectName - Name of the subject
    * @param status - "checked-in" or "checked-out"
@@ -63,7 +68,7 @@ export class SMSService {
         hour12: true,
       });
 
-      // Create the message based on status
+      // Create the SMS message based on status
       const actionText = status === "checked-in" ? "checked in to" : "checked out from";
       const message = `Hello ${student.guardian.firstName},
 

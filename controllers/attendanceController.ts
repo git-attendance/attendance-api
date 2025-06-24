@@ -733,8 +733,8 @@ export class AttendanceController {
    * @swagger
    * /attendance/test-sms:
    *   post:
-   *     summary: Send a test SMS to verify Twilio configuration
-   *     description: Send a test SMS message to verify that Twilio is properly configured
+   *     summary: Send a test voice call to verify Twilio configuration
+   *     description: Send a test voice call to verify that Twilio is properly configured
    *     security:
    *       - bearerAuth: []
    *     requestBody:

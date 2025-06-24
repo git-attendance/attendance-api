@@ -21,9 +21,11 @@ export const config = {
   },
 
   TWILIO: {
-    ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || "AC597f4a549b133a27d881dccbea0596ba",
-    AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || "972804059e38b0c20c23a0bb767be33f",
-    PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER || "",
+    ACCOUNT_SID: process.env.TWILIO_ACCOUNT_SID || "",
+    AUTH_TOKEN: process.env.TWILIO_AUTH_TOKEN || "", // Fallback Auth Token
+    API_KEY_SID: process.env.TWILIO_API_KEY_SID || "", // Your API Key SID (recommended)
+    API_SECRET: process.env.TWILIO_API_SECRET || "", // Your API Secret (recommended)
+    PHONE_NUMBER: process.env.TWILIO_PHONE_NUMBER || "+639221200563",
   },
 };
 

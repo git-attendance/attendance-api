@@ -1,10 +1,12 @@
 import dotenv from "dotenv";
+
+// Load environment variables FIRST before importing any other modules
+dotenv.config();
+
 import { createApp } from "./config/app";
 import { connectDatabase } from "./config/database";
 import { config } from "./config/constants";
 import "reflect-metadata";
-
-dotenv.config();
 
 // Purpose: Start the server
 const startServer = async () => {
