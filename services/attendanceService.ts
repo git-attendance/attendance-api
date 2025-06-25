@@ -8,16 +8,19 @@ import { AttendanceRepository } from "../repositories/attendanceRepository";
 import { FaceRecognitionService } from "./faceRecognitionService";
 import { SMSService } from "./smsService";
 import { CSVExportHelper } from "../helpers/csvExport";
+import { SocketService } from "./socketService";
 
 export class AttendanceService {
   private faceRecognitionService: FaceRecognitionService;
   private attendanceRepository: AttendanceRepository;
   private smsService: SMSService;
+  private socketService: SocketService;
 
   constructor() {
     this.faceRecognitionService = new FaceRecognitionService();
     this.attendanceRepository = new AttendanceRepository();
     this.smsService = new SMSService();
+    this.socketService = SocketService.getInstance();
   }
 
   /**
@@ -172,6 +175,29 @@ export class AttendanceService {
         // Log SMS error but don't fail the attendance process
         console.warn("Failed to send SMS notification:", smsError.message);
       }
+
+      // Emit socket event for real-time update
+      this.socketService.emitAttendanceUpdate({
+        studentId: {
+          _id: student._id,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          email: student.email,
+          section: student.section,
+          strand: student.strand,
+          image: student.image,
+        },
+        subjectId: {
+          _id: subject._id,
+          code: subject.code,
+          name: subject.name,
+          schedule: subject.schedule,
+        },
+        status: attendanceRecord.status,
+        attendanceStatus: attendanceRecord.attendanceStatus,
+        checkInTime: attendanceRecord.checkInTime,
+        checkOutTime: attendanceRecord.checkOutTime,
+      });
 
       // Populate the response with full student and subject data
       const populatedResponse = {

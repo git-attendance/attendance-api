@@ -7,6 +7,8 @@ import { createApp } from "./config/app";
 import { connectDatabase } from "./config/database";
 import { config } from "./config/constants";
 import "reflect-metadata";
+import { createServer } from "http";
+import { SocketService } from "./services/socketService";
 
 // Purpose: Start the server
 const startServer = async () => {
@@ -14,9 +16,13 @@ const startServer = async () => {
     await connectDatabase();
 
     const app = createApp();
+    const httpServer = createServer(app);
     const port = process.env.PORT || config.PORT;
 
-    app.listen(port, () => {
+    // Initialize socket service
+    SocketService.getInstance().initialize(httpServer);
+
+    httpServer.listen(port, () => {
       console.log(`Server is running on port ${port}`);
     });
   } catch (error) {
