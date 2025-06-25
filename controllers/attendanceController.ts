@@ -163,12 +163,6 @@ export class AttendanceController {
    *       - bearerAuth: []
    *     parameters:
    *       - in: query
-   *         name: userId
-   *         required: true
-   *         schema:
-   *           type: string
-   *         description: The user ID
-   *       - in: query
    *         name: subjectId
    *         schema:
    *           type: string
@@ -229,24 +223,13 @@ export class AttendanceController {
   @route.get("/history")
   async getAttendanceHistory(req: Request, res: Response): Promise<Response> {
     try {
-      const { studentId, subjectId, startDate, endDate } = req.query;
-
-      if (!studentId) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: "MISSING_STUDENT_ID",
-            message: "Student ID is required",
-            statusCode: 400,
-          },
-        });
-      }
+      const { subjectId, startDate, endDate } = req.query;
 
       const history = await this.attendanceService.getAttendanceHistory(
-        studentId as string,
-        subjectId as string,
+        subjectId as string | undefined,
         startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
+        endDate ? new Date(endDate as string) : undefined,
+        req.user.id
       );
 
       return res.status(200).json({
@@ -267,18 +250,18 @@ export class AttendanceController {
 
   /**
    * @swagger
-   * /attendance/subject/{subjectId}/stats:
+   * /attendance/subject/stats:
    *   get:
    *     summary: Get attendance statistics for a subject (Teachers and Admins only)
    *     security:
    *       - bearerAuth: []
    *     parameters:
-   *       - in: path
+   *       - in: query
    *         name: subjectId
-   *         required: true
+   *         required: false
    *         schema:
    *           type: string
-   *         description: The subject ID
+   *         description: The subject ID (required for teachers, optional for admins)
    *       - in: query
    *         name: startDate
    *         schema:
@@ -322,17 +305,18 @@ export class AttendanceController {
    *         description: Subject not found
    *     tags: [Attendance]
    */
-  @route.get("/subject/:subjectId/stats")
+  @route.get("/subject/stats")
   @UseMiddleware(new AuthMiddleware().authorize("teacher", "admin"))
   async getSubjectStats(req: Request, res: Response): Promise<Response> {
     try {
-      const { subjectId } = req.params;
+      const { subjectId } = req.query;
       const { startDate, endDate } = req.query;
 
       const stats = await this.attendanceService.getSubjectAttendanceStats(
-        subjectId,
+        subjectId as string | undefined,
         startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
+        endDate ? new Date(endDate as string) : undefined,
+        req.user.id
       );
 
       return res.status(200).json({
@@ -531,7 +515,8 @@ export class AttendanceController {
         studentId as string,
         subjectId as string,
         startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
+        endDate ? new Date(endDate as string) : undefined,
+        req.user.id
       );
 
       return res.status(200).json({
@@ -544,106 +529,6 @@ export class AttendanceController {
         error: {
           code: error.code || "STATUS_FETCH_ERROR",
           message: error.message || "Failed to fetch attendance status",
-          statusCode: error.statusCode || 500,
-        },
-      });
-    }
-  }
-
-  /**
-   * @swagger
-   * /attendance/subject/{subjectId}/students-status:
-   *   get:
-   *     summary: Get attendance status for all students in a subject (Teachers and Admins only)
-   *     security:
-   *       - bearerAuth: []
-   *     parameters:
-   *       - in: path
-   *         name: subjectId
-   *         required: true
-   *         schema:
-   *           type: string
-   *         description: The subject ID
-   *       - in: query
-   *         name: startDate
-   *         schema:
-   *           type: string
-   *           format: date
-   *         description: Start date for filtering (ISO format)
-   *       - in: query
-   *         name: endDate
-   *         schema:
-   *           type: string
-   *           format: date
-   *         description: End date for filtering (ISO format)
-   *     responses:
-   *       200:
-   *         description: Students attendance status details
-   *         content:
-   *           application/json:
-   *             schema:
-   *               type: object
-   *               properties:
-   *                 success:
-   *                   type: boolean
-   *                 data:
-   *                   type: object
-   *                   properties:
-   *                     totalStudents:
-   *                       type: number
-   *                     studentsStats:
-   *                       type: array
-   *                       items:
-   *                         type: object
-   *                         properties:
-   *                           userId:
-   *                             type: string
-   *                           totalDays:
-   *                             type: number
-   *                           presentDays:
-   *                             type: number
-   *                           absentDays:
-   *                             type: number
-   *                           presentPercentage:
-   *                             type: number
-   *                     overallStats:
-   *                       type: object
-   *                       properties:
-   *                         totalDays:
-   *                           type: number
-   *                         presentCount:
-   *                           type: number
-   *                         absentCount:
-   *                           type: number
-   *       403:
-   *         description: Unauthorized access
-   *       404:
-   *         description: Subject not found
-   *     tags: [Attendance]
-   */
-  @route.get("/subject/:subjectId/students-status")
-  @UseMiddleware(new AuthMiddleware().authorize("teacher", "admin"))
-  async getSubjectStudentsStatus(req: Request, res: Response): Promise<Response> {
-    try {
-      const { subjectId } = req.params;
-      const { startDate, endDate } = req.query;
-
-      const status = await this.attendanceService.getSubjectStudentsAttendanceStatus(
-        subjectId,
-        startDate ? new Date(startDate as string) : undefined,
-        endDate ? new Date(endDate as string) : undefined
-      );
-
-      return res.status(200).json({
-        success: true,
-        data: status,
-      });
-    } catch (error: any) {
-      return res.status(error.statusCode || 500).json({
-        success: false,
-        error: {
-          code: error.code || "STATUS_FETCH_ERROR",
-          message: error.message || "Failed to fetch students attendance status",
           statusCode: error.statusCode || 500,
         },
       });
@@ -711,7 +596,7 @@ export class AttendanceController {
   @route.get("/today")
   async getTodayAttendance(req: Request, res: Response): Promise<Response> {
     try {
-      const attendance = await this.attendanceService.getAllAttendance();
+      const attendance = await this.attendanceService.getAllAttendance(req.user.id);
 
       return res.status(200).json({
         success: true,
@@ -959,7 +844,8 @@ export class AttendanceController {
       if (endDate) filters.endDate = new Date(endDate as string);
 
       const stats = await this.attendanceService.calculateOverallAttendanceStats(
-        Object.keys(filters).length > 0 ? filters : undefined
+        filters,
+        req.user.id
       );
 
       return res.status(200).json({
@@ -972,6 +858,65 @@ export class AttendanceController {
         error: {
           code: error.code || "STATS_CALCULATION_ERROR",
           message: error.message || "Failed to calculate attendance statistics",
+          statusCode: error.statusCode || 500,
+        },
+      });
+    }
+  }
+
+  /**
+   * @swagger
+   * /attendance/export:
+   *   get:
+   *     summary: Export today's attendance records to CSV (Teachers and Admins only)
+   *     description: Export attendance records for today in CSV format. Teachers can only export their subjects' attendance.
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: query
+   *         name: subjectId
+   *         schema:
+   *           type: string
+   *         description: Optional subject ID to filter records for a specific subject
+   *     responses:
+   *       200:
+   *         description: CSV file containing attendance records
+   *         content:
+   *           text/csv:
+   *             schema:
+   *               type: string
+   *               format: binary
+   *       403:
+   *         description: Unauthorized access
+   *       500:
+   *         description: Server error
+   *     tags: [Attendance]
+   */
+  @route.get("/export")
+  @UseMiddleware(new AuthMiddleware().authorize("teacher", "admin"))
+  async exportAttendanceToCSV(req: Request, res: Response): Promise<void> {
+    try {
+      const { subjectId } = req.query;
+
+      const result = await this.attendanceService.exportAttendanceToCSV(
+        req.user.id,
+        subjectId as string | undefined
+      );
+
+      // Set headers for CSV download
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="${result.filename}"`);
+
+      // Send the CSV data
+      res.send(result.csvData);
+    } catch (error: any) {
+      // Since we already set headers for CSV, we need to clear them for JSON error response
+      res.setHeader("Content-Type", "application/json");
+      res.status(error.statusCode || 500).json({
+        success: false,
+        error: {
+          code: error.code || "EXPORT_ERROR",
+          message: error.message || "Failed to export attendance records",
           statusCode: error.statusCode || 500,
         },
       });

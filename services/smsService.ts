@@ -74,7 +74,7 @@ export class SMSService {
 
 Your child ${student.firstName} ${student.lastName} has ${actionText} ${subjectName} at ${formattedTime}.
 
-- School Attendance System`;
+- Eastern Tayabas College Attendance Management System`;
 
       // Send SMS
       const result = await this.client.messages.create({

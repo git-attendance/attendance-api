@@ -3,9 +3,11 @@ import { AttendanceModel } from "../models/attendanceModel";
 import AttendanceSchema from "../models/attendanceModel";
 import { Student } from "../models/studentModel";
 import { Subject } from "../models/subjectModel";
+import { User } from "../models/userModel";
 import { AttendanceRepository } from "../repositories/attendanceRepository";
 import { FaceRecognitionService } from "./faceRecognitionService";
 import { SMSService } from "./smsService";
+import { CSVExportHelper } from "../helpers/csvExport";
 
 export class AttendanceService {
   private faceRecognitionService: FaceRecognitionService;
@@ -16,6 +18,26 @@ export class AttendanceService {
     this.faceRecognitionService = new FaceRecognitionService();
     this.attendanceRepository = new AttendanceRepository();
     this.smsService = new SMSService();
+  }
+
+  /**
+   * Verify if a user has access to a subject
+   * @param userId - ID of the user
+   * @param subjectId - ID of the subject
+   * @returns boolean indicating if user has access
+   */
+  private async verifyUserSubjectAccess(userId: string, subjectId: string): Promise<boolean> {
+    // First check if user is admin
+    const user = await User.findById(userId);
+    if (!user) return false;
+
+    if (user.role === "admin") return true;
+
+    // If not admin, check if teacher has access to subject
+    const subject = await Subject.findById(subjectId);
+    if (!subject) return false;
+
+    return subject.instructor.toString() === userId;
   }
 
   /**
@@ -39,23 +61,26 @@ export class AttendanceService {
     }
 
     // Check current time against subject schedule first
-    const currentTime = new Date();
+    // Convert to Philippines time (UTC+8)
+    const philippinesOffset = 8 * 60; // 8 hours in minutes
+    const now = new Date();
+    const currentTime = new Date(now.getTime() + philippinesOffset * 60 * 1000);
     const currentDay = currentTime.toLocaleDateString("en-US", { weekday: "long" });
 
-    // if (subject.schedule.day !== currentDay) {
-    //   const error = new Error(`No class scheduled for ${currentDay}`) as any;
-    //   error.statusCode = 400;
-    //   error.code = "NO_CLASS_SCHEDULED";
-    //   throw error;
-    // }
+    if (subject.schedule.day !== currentDay) {
+      const error = new Error(`No class scheduled for ${currentDay}`) as any;
+      error.statusCode = 400;
+      error.code = "NO_CLASS_SCHEDULED";
+      throw error;
+    }
 
-    // const currentTimeStr = currentTime.toTimeString().slice(0, 5); // HH:MM format
-    // if (currentTimeStr < subject.schedule.startTime || currentTimeStr > subject.schedule.endTime) {
-    //   const error = new Error("Attendance can only be marked during class hours") as any;
-    //   error.statusCode = 400;
-    //   error.code = "OUTSIDE_CLASS_HOURS";
-    //   throw error;
-    // }
+    const currentTimeStr = currentTime.toTimeString().slice(0, 5); // HH:MM format
+    if (currentTimeStr < subject.schedule.startTime || currentTimeStr > subject.schedule.endTime) {
+      const error = new Error("Attendance can only be marked during class hours") as any;
+      error.statusCode = 400;
+      error.code = "OUTSIDE_CLASS_HOURS";
+      throw error;
+    }
 
     // Use face recognition to identify the student
     const verificationResult = await this.faceRecognitionService.verifyPerson(
@@ -179,33 +204,117 @@ export class AttendanceService {
   }
 
   /**
-   * Get attendance history for a user in a specific subject
-   * @param studentId - ID of the student
-   * @param subjectId - ID of the subject
-   * @param startDate - Start date for filtering
-   * @param endDate - End date for filtering
+   * Get attendance history for students in teacher's subjects or all students if admin
+   * @param subjectId - Optional subject ID for filtering
+   * @param startDate - Optional start date for filtering
+   * @param endDate - Optional end date for filtering
+   * @param userId - ID of the user requesting history
    */
   async getAttendanceHistory(
-    studentId: string,
-    subjectId?: string,
-    startDate?: Date,
-    endDate?: Date
+    subjectId: string | undefined,
+    startDate: Date | undefined,
+    endDate: Date | undefined,
+    userId: string
   ): Promise<AttendanceModel[]> {
-    return this.attendanceRepository.getHistory(studentId, subjectId, startDate, endDate);
+    // Check if user exists
+    const user = await User.findById(userId);
+    if (!user) {
+      const error = new Error("User not found") as any;
+      error.statusCode = 404;
+      error.code = "USER_NOT_FOUND";
+      throw error;
+    }
+
+    // If admin, allow access to all attendance records
+    if (user.role === "admin") {
+      return this.attendanceRepository.getHistory(undefined, subjectId, startDate, endDate);
+    }
+
+    // For teachers, verify access if specific subject is requested
+    if (subjectId) {
+      const hasAccess = await this.verifyUserSubjectAccess(userId, subjectId);
+      if (!hasAccess) {
+        const error = new Error("Not authorized to view attendance for this subject") as any;
+        error.statusCode = 403;
+        error.code = "UNAUTHORIZED_SUBJECT_ACCESS";
+        throw error;
+      }
+      return this.attendanceRepository.getHistory(undefined, subjectId, startDate, endDate);
+    }
+
+    // If no specific subject, get all attendance records for teacher's subjects
+    const teacherSubjects = await Subject.find({ instructor: userId }).select("_id");
+    const subjectIds = teacherSubjects.map((subject) => subject._id.toString());
+    return this.attendanceRepository.getHistoryBySubjects(
+      subjectIds,
+      undefined,
+      startDate,
+      endDate
+    );
   }
 
   /**
    * Get attendance statistics for a subject
-   * @param subjectId - ID of the subject
+   * @param subjectId - ID of the subject (optional for admin users)
    * @param startDate - Start date for statistics
    * @param endDate - End date for statistics
+   * @param userId - ID of the user requesting stats
    */
-  async getSubjectAttendanceStats(subjectId: string, startDate?: Date, endDate?: Date) {
-    const attendanceRecords = await this.attendanceRepository.getSubjectAttendance(
-      subjectId,
-      startDate,
-      endDate
-    );
+  async getSubjectAttendanceStats(
+    subjectId: string | undefined,
+    startDate: Date | undefined,
+    endDate: Date | undefined,
+    userId: string
+  ) {
+    // Check if user exists and get role
+    const user = await User.findById(userId);
+    if (!user) {
+      const error = new Error("User not found") as any;
+      error.statusCode = 404;
+      error.code = "USER_NOT_FOUND";
+      throw error;
+    }
+
+    // For teachers, subjectId is required
+    if (user.role === "teacher" && !subjectId) {
+      const error = new Error("Subject ID is required for teachers") as any;
+      error.statusCode = 400;
+      error.code = "SUBJECT_ID_REQUIRED";
+      throw error;
+    }
+
+    // If subjectId is provided, verify access for teachers
+    if (subjectId && user.role === "teacher") {
+      const hasAccess = await this.verifyUserSubjectAccess(userId, subjectId);
+      if (!hasAccess) {
+        const error = new Error("Not authorized to view attendance stats for this subject") as any;
+        error.statusCode = 403;
+        error.code = "UNAUTHORIZED_SUBJECT_ACCESS";
+        throw error;
+      }
+    }
+
+    let attendanceRecords;
+    if (subjectId) {
+      // Get stats for specific subject
+      attendanceRecords = await this.attendanceRepository.getSubjectAttendance(
+        subjectId,
+        startDate,
+        endDate
+      );
+    } else if (user.role === "admin") {
+      // For admin without subjectId, get all attendance records
+      attendanceRecords = await this.attendanceRepository.findByFilter({
+        ...(startDate && { createdAt: { $gte: startDate } }),
+        ...(endDate && { createdAt: { $lte: endDate } }),
+      });
+    } else {
+      // For teacher without subjectId (shouldn't happen due to earlier check)
+      const error = new Error("Subject ID is required for teachers") as any;
+      error.statusCode = 400;
+      error.code = "SUBJECT_ID_REQUIRED";
+      throw error;
+    }
 
     // Calculate statistics
     const totalSessions = attendanceRecords.length;
@@ -234,13 +343,24 @@ export class AttendanceService {
    * @param subjectId - ID of the subject
    * @param startDate - Start date for filtering
    * @param endDate - End date for filtering
+   * @param userId - ID of the user requesting status
    */
   async getStudentAttendanceStatus(
     studentId: string,
     subjectId: string,
-    startDate?: Date,
-    endDate?: Date
+    startDate: Date | undefined,
+    endDate: Date | undefined,
+    userId: string
   ) {
+    // Verify user has access to this subject
+    const hasAccess = await this.verifyUserSubjectAccess(userId, subjectId);
+    if (!hasAccess) {
+      const error = new Error("Not authorized to view student attendance for this subject") as any;
+      error.statusCode = 403;
+      error.code = "UNAUTHORIZED_SUBJECT_ACCESS";
+      throw error;
+    }
+
     const attendanceRecords = await this.attendanceRepository.getHistory(
       studentId,
       subjectId,
@@ -284,165 +404,11 @@ export class AttendanceService {
   }
 
   /**
-   * Get attendance status for all students in a subject
-   * @param subjectId - ID of the subject
-   * @param startDate - Start date for filtering
-   * @param endDate - End date for filtering
-   */
-  async getSubjectStudentsAttendanceStatus(subjectId: string, startDate?: Date, endDate?: Date) {
-    // First verify if subject exists
-    const subject = await Subject.findById(subjectId);
-    if (!subject) {
-      const error = new Error("Subject not found") as any;
-      error.statusCode = 404;
-      error.code = "SUBJECT_NOT_FOUND";
-      throw error;
-    }
-
-    const attendanceRecords = await this.attendanceRepository.getSubjectAttendance(
-      subjectId,
-      startDate,
-      endDate
-    );
-
-    // Handle case when no records found
-    if (!attendanceRecords || attendanceRecords.length === 0) {
-      return {
-        subject: {
-          _id: subject._id,
-          code: subject.code,
-          name: subject.name,
-          schedule: subject.schedule,
-        },
-        totalStudents: 0,
-        studentsStats: [],
-        overallStats: {
-          totalDays: 0,
-          presentCount: 0,
-          absentCount: 0,
-        },
-      };
-    }
-
-    // Group records by student and populate user details
-    const studentAttendance = new Map();
-
-    // First, get all unique user IDs, filtering out any null or undefined values
-    const studentIds = [
-      ...new Set(
-        attendanceRecords
-          .filter((record) => record && record.studentId)
-          .map((record) => {
-            // Handle both string and object cases
-            const studentId = record.studentId;
-            if (typeof studentId === "object" && studentId !== null && "_id" in studentId) {
-              return studentId._id as mongoose.Types.ObjectId;
-            }
-            return studentId as mongoose.Types.ObjectId;
-          })
-      ),
-    ];
-
-    if (studentIds.length === 0) {
-      const error = new Error("No valid user IDs found in attendance records") as any;
-      error.statusCode = 500;
-      error.code = "INVALID_RECORDS";
-      throw error;
-    }
-
-    // Fetch all users at once
-    const students = await Student.find({ _id: { $in: studentIds } }).select("-password");
-    const studentsMap = new Map(students.map((student) => [student._id.toString(), student]));
-
-    // Process attendance records with user details
-    attendanceRecords.forEach((record) => {
-      if (!record || !record.studentId) {
-        console.warn("Invalid attendance record found:", record);
-        return; // Skip this record
-      }
-
-      try {
-        // Handle both string and object cases for studentId
-        const studentId =
-          typeof record.studentId === "object" &&
-          record.studentId !== null &&
-          "_id" in record.studentId
-            ? (record.studentId._id as mongoose.Types.ObjectId).toString()
-            : (record.studentId as mongoose.Types.ObjectId).toString();
-
-        const student = studentsMap.get(studentId);
-
-        if (!studentAttendance.has(studentId)) {
-          studentAttendance.set(studentId, {
-            student: student
-              ? {
-                  _id: student._id,
-                  firstName: student.firstName,
-                  lastName: student.lastName,
-                  email: student.email,
-                  personId: student.personId,
-                }
-              : {
-                  _id: studentId,
-                  firtName: "Unknown student",
-                  lastName: "N/A",
-                  email: "N/A",
-                  personId: "N/A",
-                },
-            totalDays: 0,
-            presentDays: 0,
-            absentDays: 0,
-            records: [],
-          });
-        }
-
-        const stats = studentAttendance.get(studentId);
-        stats.totalDays++;
-        if (record.attendanceStatus === "present") {
-          stats.presentDays++;
-        } else {
-          stats.absentDays++;
-        }
-        stats.records.push(record);
-      } catch (error) {
-        console.error("Error processing attendance record:", error);
-        // Continue with next record instead of breaking the entire process
-      }
-    });
-
-    // Convert map to array and calculate percentages
-    const studentsStats = Array.from(studentAttendance.entries()).map(([studentId, stats]) => ({
-      student: stats.student,
-      totalDays: stats.totalDays,
-      presentDays: stats.presentDays,
-      absentDays: stats.absentDays,
-      presentPercentage:
-        stats.totalDays > 0 ? Math.round((stats.presentDays / stats.totalDays) * 10000) / 100 : 0,
-      records: stats.records,
-    }));
-
-    return {
-      subject: {
-        _id: subject._id,
-        code: subject.code,
-        name: subject.name,
-        schedule: subject.schedule,
-      },
-      totalStudents: studentsStats.length,
-      studentsStats,
-      overallStats: {
-        totalDays: attendanceRecords.length,
-        presentCount: attendanceRecords.filter((r) => r && r.attendanceStatus === "present").length,
-        absentCount: attendanceRecords.filter((r) => r && r.attendanceStatus === "absent").length,
-      },
-    };
-  }
-
-  /**
    * Get all attendance records for today only
    * Records reset to empty array at the start of each day
+   * @param userId - ID of the user requesting records
    */
-  async getAllAttendance(): Promise<{
+  async getAllAttendance(userId: string): Promise<{
     date: string;
     total: number;
     present: number;
@@ -468,13 +434,31 @@ export class AttendanceService {
     const tomorrowUTC = new Date(todayUTC.getTime() + 24 * 60 * 60 * 1000);
 
     try {
-      // Get all attendance records for today
-      const records = await this.attendanceRepository.findByFilter({
+      // Check if user is admin
+      const user = await User.findById(userId);
+      if (!user) {
+        const error = new Error("User not found") as any;
+        error.statusCode = 404;
+        error.code = "USER_NOT_FOUND";
+        throw error;
+      }
+
+      let query: any = {
         createdAt: {
           $gte: todayUTC,
           $lt: tomorrowUTC,
         },
-      });
+      };
+
+      // If not admin, filter by teacher's subjects
+      if (user.role !== "admin") {
+        const teacherSubjects = await Subject.find({ instructor: userId }).select("_id");
+        const subjectIds = teacherSubjects.map((subject) => subject._id);
+        query.subjectId = { $in: subjectIds };
+      }
+
+      // Get attendance records
+      const records = await this.attendanceRepository.findByFilter(query);
 
       // Calculate statistics
       const total = records.length;
@@ -499,13 +483,19 @@ export class AttendanceService {
   /**
    * Calculate overall attendance statistics with optional filtering
    * @param filters - Optional filters for student, subject, and date range
+   * @param userId - ID of the user requesting stats
    */
-  async calculateOverallAttendanceStats(filters?: {
-    studentId?: string;
-    subjectId?: string;
-    startDate?: Date;
-    endDate?: Date;
-  }): Promise<{
+  async calculateOverallAttendanceStats(
+    filters:
+      | {
+          studentId?: string;
+          subjectId?: string;
+          startDate?: Date;
+          endDate?: Date;
+        }
+      | undefined,
+    userId: string
+  ): Promise<{
     totalRecords: number;
     totalPresent: number;
     totalAbsent: number;
@@ -538,15 +528,40 @@ export class AttendanceService {
     }>;
   }> {
     try {
+      // Check if user is admin
+      const user = await User.findById(userId);
+      if (!user) {
+        const error = new Error("User not found") as any;
+        error.statusCode = 404;
+        error.code = "USER_NOT_FOUND";
+        throw error;
+      }
+
       // Build query filters
       const query: any = {};
 
-      if (filters?.studentId) {
-        query.studentId = new mongoose.Types.ObjectId(filters.studentId);
+      // If specific subject is provided, verify access for non-admin users
+      if (filters?.subjectId) {
+        if (user.role !== "admin") {
+          const hasAccess = await this.verifyUserSubjectAccess(userId, filters.subjectId);
+          if (!hasAccess) {
+            const error = new Error(
+              "Not authorized to view attendance stats for this subject"
+            ) as any;
+            error.statusCode = 403;
+            error.code = "UNAUTHORIZED_SUBJECT_ACCESS";
+            throw error;
+          }
+        }
+        query.subjectId = new mongoose.Types.ObjectId(filters.subjectId);
+      } else if (user.role !== "admin") {
+        // If no specific subject and not admin, only show stats for subjects taught by this teacher
+        const teacherSubjects = await Subject.find({ instructor: userId }).select("_id");
+        query.subjectId = { $in: teacherSubjects.map((subject) => subject._id) };
       }
 
-      if (filters?.subjectId) {
-        query.subjectId = new mongoose.Types.ObjectId(filters.subjectId);
+      if (filters?.studentId) {
+        query.studentId = new mongoose.Types.ObjectId(filters.studentId);
       }
 
       if (filters?.startDate || filters?.endDate) {
@@ -747,6 +762,99 @@ export class AttendanceService {
       const err = new Error("Failed to calculate attendance statistics") as any;
       err.statusCode = 500;
       err.code = "STATS_CALCULATION_ERROR";
+      throw err;
+    }
+  }
+
+  /**
+   * Export attendance records for a teacher's subject to CSV
+   * @param userId - ID of the teacher
+   * @param subjectId - Optional subject ID to filter records
+   * @returns Object containing CSV data and filename
+   */
+  async exportAttendanceToCSV(
+    userId: string,
+    subjectId?: string
+  ): Promise<{ csvData: string; filename: string }> {
+    try {
+      // Check if user exists and get their details
+      const user = await User.findById(userId).select("name email role");
+      if (!user) {
+        const error = new Error("User not found") as any;
+        error.statusCode = 404;
+        error.code = "USER_NOT_FOUND";
+        throw error;
+      }
+
+      // Build query for attendance records
+      let query: any = {};
+
+      // If specific subject is provided, verify access
+      if (subjectId) {
+        const hasAccess = await this.verifyUserSubjectAccess(userId, subjectId);
+        if (!hasAccess) {
+          const error = new Error("Not authorized to access this subject's attendance") as any;
+          error.statusCode = 403;
+          error.code = "UNAUTHORIZED_SUBJECT_ACCESS";
+          throw error;
+        }
+        query.subjectId = new mongoose.Types.ObjectId(subjectId);
+      } else if (user.role !== "admin") {
+        // If no specific subject and not admin, get all subjects taught by this teacher
+        const teacherSubjects = await Subject.find({ instructor: userId }).select("_id");
+        query.subjectId = { $in: teacherSubjects.map((subject) => subject._id) };
+      }
+
+      // Get today's date range in Philippines timezone (UTC+8)
+      const philippinesOffset = 8 * 60; // 8 hours in minutes
+      const now = new Date();
+      const philippinesTime = new Date(now.getTime() + philippinesOffset * 60 * 1000);
+      const todayPhilippines = new Date(
+        philippinesTime.getFullYear(),
+        philippinesTime.getMonth(),
+        philippinesTime.getDate()
+      );
+      const todayUTC = new Date(todayPhilippines.getTime() - philippinesOffset * 60 * 1000);
+      const tomorrowUTC = new Date(todayUTC.getTime() + 24 * 60 * 60 * 1000);
+
+      // Add date filter for today only
+      query.createdAt = {
+        $gte: todayUTC,
+        $lt: tomorrowUTC,
+      };
+
+      // Get attendance records with populated data
+      const attendanceRecords = await AttendanceSchema.find(query)
+        .populate("studentId", "firstName lastName email")
+        .populate("subjectId", "name code")
+        .sort({ createdAt: -1 });
+
+      // Add teacher information to each record
+      const recordsWithTeacher = attendanceRecords.map((record) => ({
+        ...record.toObject(),
+        teacher: {
+          name: user.name,
+          email: user.email,
+        },
+      }));
+
+      // Generate CSV data
+      const csvData = CSVExportHelper.exportAttendanceToCSV(recordsWithTeacher);
+
+      // Generate filename with date
+      const dateStr = todayPhilippines.toISOString().split("T")[0];
+      const filename = CSVExportHelper.generateCSVFilename(`attendance_${dateStr}`);
+
+      return {
+        csvData,
+        filename,
+      };
+    } catch (error: any) {
+      if (error.statusCode) throw error;
+
+      const err = new Error("Failed to export attendance records") as any;
+      err.statusCode = 500;
+      err.code = "ATTENDANCE_EXPORT_ERROR";
       throw err;
     }
   }
