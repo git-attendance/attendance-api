@@ -177,8 +177,8 @@ export class AttendanceRepository {
     try {
       return await Attendance.find(filter)
         .sort({ createdAt: -1 })
-        .populate("studentId", "firstName lastName email section strand image")
-        .populate("subjectId", "code name schedule");
+        .populate("studentId", "firstName lastName email section strand image, studentId, gradeLevel, remarks")
+        .populate("subjectId", "code name schedule")
     } catch (error) {
       throw new AppError("Failed to fetch attendance records", 500);
     }
