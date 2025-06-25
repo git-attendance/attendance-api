@@ -77,13 +77,13 @@ export class AttendanceService {
       throw error;
     }
 
-    const currentTimeStr = currentTime.toTimeString().slice(0, 5); // HH:MM format
-    if (currentTimeStr < subject.schedule.startTime || currentTimeStr > subject.schedule.endTime) {
-      const error = new Error("Attendance can only be marked during class hours") as any;
-      error.statusCode = 400;
-      error.code = "OUTSIDE_CLASS_HOURS";
-      throw error;
-    }
+    // const currentTimeStr = currentTime.toTimeString().slice(0, 5); // HH:MM format
+    // if (currentTimeStr < subject.schedule.startTime || currentTimeStr > subject.schedule.endTime) {
+    //   const error = new Error("Attendance can only be marked during class hours") as any;
+    //   error.statusCode = 400;
+    //   error.code = "OUTSIDE_CLASS_HOURS";
+    //   throw error;
+    // }
 
     // Use face recognition to identify the student
     const verificationResult = await this.faceRecognitionService.verifyPerson(
